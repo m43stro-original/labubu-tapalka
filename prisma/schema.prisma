@@ -1,0 +1,100 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String          @id @default(uuid())
+  telegramId       BigInt          @unique
+  username         String?
+  firstName        String?
+  lastName         String?
+  photoUrl         String?
+  balance          Float           @default(100.0)
+  totalEarned      Float           @default(100.0)
+  clickLevel       Int             @default(1)
+  clickUpgrade     Int             @default(1)
+  clickPower       Float           @default(1.0)
+  energy           Float           @default(500.0)
+  maxEnergy        Float           @default(500.0)
+  energyRegen      Float           @default(3.0)
+  lastTapSync      DateTime        @default(now())
+  lastPassiveSync  DateTime        @default(now())
+  referrerId       String?
+  referralCount    Int             @default(0)
+  referralEarnings Float           @default(0.0)
+  isBanned         Boolean         @default(false)
+  role             String          @default("USER")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  floors           ConveyorFloor[]
+  sentTransfers    TransferLog[]   @relation("SentTransfers")
+  receivedTransfers TransferLog[]  @relation("ReceivedTransfers")
+  createdDuels     Duel[]          @relation("CreatedDuels")
+  joinedDuels      Duel[]          @relation("JoinedDuels")
+  wonDuels         Duel[]          @relation("WonDuels")
+
+  @@index([balance(sort: Desc)])
+  @@index([referralCount(sort: Desc)])
+}
+
+model ConveyorFloor {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  floorNumber    Int
+  isUnlocked     Boolean  @default(false)
+  beltSpeedLevel Int      @default(1)
+  dropSpeedLevel Int      @default(1)
+  dispenserCount Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, floorNumber])
+}
+
+model TransferLog {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("SentTransfers", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User     @relation("ReceivedTransfers", fields: [receiverId], references: [id])
+  amount     Float
+  createdAt  DateTime @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model Duel {
+  id         String   @id @default(uuid())
+  creatorId  String
+  creator    User     @relation("CreatedDuels", fields: [creatorId], references: [id])
+  opponentId String?
+  opponent   User?    @relation("JoinedDuels", fields: [opponentId], references: [id])
+  gameType   String
+  betAmount  Float
+  status     String   @default("OPEN")
+  winnerId   String?
+  winner     User?    @relation("WonDuels", fields: [winnerId], references: [id])
+  resultData String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+}
+
+model AdminLog {
+  id              String   @id @default(uuid())
+  adminTelegramId BigInt
+  targetUserId    String
+  action          String
+  amount          Float?
+  reason          String?
+  createdAt       DateTime @default(now())
+}

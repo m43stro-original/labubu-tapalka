@@ -1,0 +1,18 @@
+[Unit]
+Description=Labubu Empire Telegram Bot Service
+After=network.target labubu-web.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/tapalka_co2
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node bot.mjs
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=labubu-bot
+
+[Install]
+WantedBy=multi-user.target

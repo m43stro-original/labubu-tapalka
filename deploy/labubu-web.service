@@ -1,0 +1,19 @@
+[Unit]
+Description=Labubu Empire Next.js WebApp Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/tapalka_co2
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=labubu-web
+
+[Install]
+WantedBy=multi-user.target
