@@ -7,7 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/root/tapalka_co2
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node bot.mjs
+ExecStart=/usr/local/bin/node bot.mjs
 Restart=always
 RestartSec=5
 StandardOutput=syslog

@@ -8,7 +8,7 @@ User=root
 WorkingDirectory=/root/tapalka_co2
 Environment=NODE_ENV=production
 Environment=PORT=3000
-ExecStart=/usr/bin/npm run start
+ExecStart=/usr/local/bin/npm run start
 Restart=always
 RestartSec=5
 StandardOutput=syslog
