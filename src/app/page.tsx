@@ -17,6 +17,7 @@ interface TelegramUserAuth {
   id: string;
   username: string;
   firstName: string;
+  photoUrl?: string;
 }
 
 // Helper to extract Telegram WebApp user from environment
@@ -33,6 +34,7 @@ function extractTelegramUser(): TelegramUserAuth | null {
           id: u.id.toString(),
           username: u.username || "",
           firstName: u.first_name || "Тапер",
+          photoUrl: u.photo_url || "",
         };
       }
 
@@ -47,6 +49,7 @@ function extractTelegramUser(): TelegramUserAuth | null {
               id: u.id.toString(),
               username: u.username || "",
               firstName: u.first_name || "Тапер",
+              photoUrl: u.photo_url || "",
             };
           }
         }
@@ -68,6 +71,7 @@ function extractTelegramUser(): TelegramUserAuth | null {
               id: u.id.toString(),
               username: u.username || "",
               firstName: u.first_name || "Тапер",
+              photoUrl: u.photo_url || "",
             };
           }
         }
@@ -83,6 +87,7 @@ function extractTelegramUser(): TelegramUserAuth | null {
           id: tId,
           username: p.get("username") || "",
           firstName: p.get("firstName") || "Тапер",
+          photoUrl: p.get("photoUrl") || p.get("photo_url") || "",
         };
       }
     }
@@ -120,7 +125,8 @@ export default function App() {
         try {
           twa.ready();
           twa.expand();
-          twa.enableClosingConfirmation?.();
+          // Disable exit confirmation modal so user can exit cleanly without warning
+          twa.disableClosingConfirmation?.();
           twa.setHeaderColor?.("#090c10");
           twa.setBackgroundColor?.("#090c10");
         } catch (e) {
@@ -142,7 +148,7 @@ export default function App() {
         if (found) {
           setTgUser(found);
           setAuthChecked(true);
-          fetchUser(found.id, found.username, found.firstName);
+          fetchUser(found.id, found.username, found.firstName, found.photoUrl || "");
         } else if (attempts < 12) {
           attempts++;
           setTimeout(detectUser, 60);
@@ -157,11 +163,11 @@ export default function App() {
   }, []);
 
   // Fetch or initialize user from server
-  const fetchUser = async (tgId: string, uName = "", fName = "") => {
+  const fetchUser = async (tgId: string, uName = "", fName = "", pUrl = "") => {
     try {
       setLoading(true);
       const refCode = typeof window !== "undefined" ? sessionStorage.getItem("referral_code") || "" : "";
-      const url = `/api/user?telegramId=${tgId}&username=${encodeURIComponent(uName)}&firstName=${encodeURIComponent(fName)}&ref=${refCode}`;
+      const url = `/api/user?telegramId=${tgId}&username=${encodeURIComponent(uName)}&firstName=${encodeURIComponent(fName)}&photoUrl=${encodeURIComponent(pUrl)}&ref=${refCode}`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -187,8 +193,12 @@ export default function App() {
   };
 
   // Real-time passive income accumulation ticker
+  // When activeTab === "factory", passive ticker pauses so coins are realistically credited
+  // strictly when Labubus reach the safe on the conveyor belt!
   useEffect(() => {
     if (!user || !user.floors) return;
+    if (activeTab === "factory") return;
+
     const passiveRate = calculatePassiveIncomePerSecond(user.floors);
     if (passiveRate <= 0) return;
 
@@ -204,7 +214,7 @@ export default function App() {
     }, 500);
 
     return () => clearInterval(ticker);
-  }, [user?.floors]);
+  }, [user?.floors, activeTab]);
 
   // Smooth continuous energy regeneration ticker
   useEffect(() => {

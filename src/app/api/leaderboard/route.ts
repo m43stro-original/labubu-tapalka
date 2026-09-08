@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
         id: l.id,
         telegramId: l.telegramId.toString(),
         name: l.username ? `@${l.username}` : l.firstName || "Игрок Labubu",
+        photoUrl: l.photoUrl || null,
         clickLevel: l.clickLevel,
         balance: l.balance,
         referralCount: l.referralCount ?? 0,

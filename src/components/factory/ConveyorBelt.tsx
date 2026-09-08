@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Sparkles } from "lucide-react";
+import { playCoinSound, triggerHaptic } from "@/lib/sound-fx";
 
 interface ConveyorBeltProps {
   floorNumber: number;
@@ -48,6 +49,20 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
   const nextIdRef = useRef(1);
   const animFrameIdRef = useRef<number>(0);
   const imageLoadedRef = useRef<HTMLImageElement | null>(null);
+  const treadOffsetRef = useRef(0);
+
+  // Synchronize dynamic props into refs to avoid restarting the 60 FPS animation loop
+  const onCoinEarnedRef = useRef(onCoinEarned);
+  onCoinEarnedRef.current = onCoinEarned;
+
+  const beltSpeedLevelRef = useRef(beltSpeedLevel);
+  beltSpeedLevelRef.current = beltSpeedLevel;
+
+  const dispenserCountRef = useRef(dispenserCount);
+  dispenserCountRef.current = dispenserCount;
+
+  const baseIncomePerDropRef = useRef(baseIncomePerDrop);
+  baseIncomePerDropRef.current = baseIncomePerDrop;
 
   // Preload Labubu image
   useEffect(() => {
@@ -61,7 +76,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
   // Drop frequency in ms
   const dropIntervalMs = Math.max(800, 3600 - (dropSpeedLevel - 1) * 280);
 
-  // Periodic dispenser drop spawner
+  // Periodic dispenser drop spawner with overlap prevention
   useEffect(() => {
     let pipeIndex = 0;
 
@@ -73,34 +88,55 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       if (w <= 0) return;
 
       // Calculate pipe positions
+      const count = dispenserCountRef.current;
       let pipeFractions: number[] = [];
-      if (dispenserCount === 1) pipeFractions = [0.32];
-      else if (dispenserCount === 2) pipeFractions = [0.22, 0.52];
-      else if (dispenserCount === 3) pipeFractions = [0.18, 0.38, 0.60];
+      if (count === 1) pipeFractions = [0.32];
+      else if (count === 2) pipeFractions = [0.22, 0.52];
+      else if (count === 3) pipeFractions = [0.18, 0.38, 0.60];
       else pipeFractions = [0.15, 0.32, 0.50, 0.68];
 
-      const xPos = w * pipeFractions[pipeIndex % pipeFractions.length];
-      pipeIndex++;
+      // Find a pipe that has free space underneath (minimum 56px clearance from any figurine)
+      let chosenFraction: number | null = null;
+      for (let i = 0; i < pipeFractions.length; i++) {
+        const candidateIdx = (pipeIndex + i) % pipeFractions.length;
+        const frac = pipeFractions[candidateIdx];
+        const px = w * frac;
 
-      itemsRef.current.push({
-        id: nextIdRef.current++,
-        x: xPos,
-        y: 20, // top pipe exit
-        vy: 1.5,
-        isFalling: true,
-        scaleX: 0.9,
-        scaleY: 1.1,
-        squashTimer: 0,
-      });
+        // Figurine center width is ~48px, require >= 56px to ensure zero overlap
+        const isOccupied = itemsRef.current.some(
+          (item) => Math.abs(item.x - px) < 56
+        );
 
-      // Cap max items in memory
-      if (itemsRef.current.length > 25) {
-        itemsRef.current = itemsRef.current.slice(-20);
+        if (!isOccupied) {
+          chosenFraction = frac;
+          pipeIndex = candidateIdx + 1;
+          break;
+        }
+      }
+
+      // Drop only if a clear pipe was found
+      if (chosenFraction !== null) {
+        const xPos = w * chosenFraction;
+        itemsRef.current.push({
+          id: nextIdRef.current++,
+          x: xPos,
+          y: 20, // top pipe exit
+          vy: 1.5,
+          isFalling: true,
+          scaleX: 0.9,
+          scaleY: 1.1,
+          squashTimer: 0,
+        });
+
+        // Cap max items in memory
+        if (itemsRef.current.length > 25) {
+          itemsRef.current = itemsRef.current.slice(-20);
+        }
       }
     }, dropIntervalMs);
 
     return () => clearInterval(interval);
-  }, [dropIntervalMs, dispenserCount]);
+  }, [dropIntervalMs]);
 
   // Main 60 FPS Canvas Physics & Render Loop
   useEffect(() => {
@@ -108,8 +144,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
-    let treadOffset = 0;
 
     // Handle high DPI
     const resizeCanvas = () => {
@@ -133,17 +167,21 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
       ctx.clearRect(0, 0, w, h);
 
+      const currentDispCount = dispenserCountRef.current;
+      const currentBeltSpeedLevel = beltSpeedLevelRef.current;
+      const currentBaseIncome = baseIncomePerDropRef.current;
+
       // Belt coordinates
       const beltY = h - 60;
       const beltHeight = 24;
       const vaultX = w - 65;
-      const beltSpeed = 1.2 + (beltSpeedLevel - 1) * 0.35;
+      const beltSpeed = 1.2 + (currentBeltSpeedLevel - 1) * 0.35;
 
       // 1. Draw Pipes at top
       let pipeFractions: number[] = [];
-      if (dispenserCount === 1) pipeFractions = [0.32];
-      else if (dispenserCount === 2) pipeFractions = [0.22, 0.52];
-      else if (dispenserCount === 3) pipeFractions = [0.18, 0.38, 0.60];
+      if (currentDispCount === 1) pipeFractions = [0.32];
+      else if (currentDispCount === 2) pipeFractions = [0.22, 0.52];
+      else if (currentDispCount === 3) pipeFractions = [0.18, 0.38, 0.60];
       else pipeFractions = [0.15, 0.32, 0.50, 0.68];
 
       pipeFractions.forEach((frac) => {
@@ -175,11 +213,11 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, beltY, w, beltHeight);
 
-      // Belt moving treads (infinite smooth scrolling)
-      treadOffset = (treadOffset + beltSpeed) % 24;
+      // Belt moving treads (continuous smooth scrolling without offset resets)
+      treadOffsetRef.current = (treadOffsetRef.current + beltSpeed) % 24;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
       ctx.lineWidth = 4;
-      for (let tx = -24 + treadOffset; tx < w; tx += 24) {
+      for (let tx = -24 + treadOffsetRef.current; tx < w; tx += 24) {
         ctx.beginPath();
         ctx.moveTo(tx, beltY + 2);
         ctx.lineTo(tx + 12, beltY + beltHeight - 2);
@@ -268,11 +306,13 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
           // Check if entered vault
           if (item.x >= vaultX + 15) {
-            // Reward income
+            // Realistic vault reward timing: credited precisely as figurine reaches safe
             const income = Math.floor(
-              baseIncomePerDrop * (1 + (beltSpeedLevel - 1) * 0.15)
+              currentBaseIncome * (1 + (currentBeltSpeedLevel - 1) * 0.15)
             );
-            onCoinEarned(income);
+            onCoinEarnedRef.current(income);
+            playCoinSound();
+            triggerHaptic("light");
 
             // Add floating reward text
             floatingTextsRef.current.push({
@@ -343,7 +383,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       cancelAnimationFrame(animFrameIdRef.current);
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [beltSpeedLevel, baseIncomePerDrop, dispenserCount, onCoinEarned]);
+  }, []);
 
   return (
     <div className="relative w-full h-64 bg-gradient-to-b from-[#111724] via-[#0c101a] to-[#070a10] rounded-3xl p-2 border border-white/10 shadow-inner overflow-hidden flex flex-col justify-end">

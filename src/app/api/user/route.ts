@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const telegramIdStr = searchParams.get("telegramId");
     const username = searchParams.get("username") || undefined;
     const firstName = searchParams.get("firstName") || undefined;
+    const photoUrl = searchParams.get("photoUrl") || undefined;
     const refCode = searchParams.get("ref"); // referrer telegramId if invited
 
     if (!telegramIdStr) {
@@ -22,6 +23,22 @@ export async function GET(req: NextRequest) {
       where: { telegramId },
       include: { floors: { orderBy: { floorNumber: "asc" } } },
     });
+
+    // Update existing user profile info (photoUrl, username, firstName) if changed
+    if (user) {
+      const updates: Record<string, string> = {};
+      if (username && username !== user.username) updates.username = username;
+      if (firstName && firstName !== user.firstName) updates.firstName = firstName;
+      if (photoUrl && photoUrl !== user.photoUrl) updates.photoUrl = photoUrl;
+
+      if (Object.keys(updates).length > 0) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: updates,
+          include: { floors: { orderBy: { floorNumber: "asc" } } },
+        });
+      }
+    }
 
     // Create new user if not exists
     if (!user) {
@@ -59,6 +76,7 @@ export async function GET(req: NextRequest) {
           telegramId,
           username,
           firstName,
+          photoUrl: photoUrl || null,
           balance: startingBalance,
           totalEarned: startingBalance,
           clickLevel: 1,

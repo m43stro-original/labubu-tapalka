@@ -114,10 +114,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ user }) => {
                     : "border-white/5"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   {/* Rank badge */}
                   <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs ${
+                    className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
                       isTop1
                         ? "bg-brand-gold text-black shadow-lg shadow-amber-500/40"
                         : isTop2
@@ -130,9 +130,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ user }) => {
                     {isTop1 ? <Crown size={14} /> : leader.rank}
                   </div>
 
+                  {/* User Telegram Avatar */}
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/10 border border-white/15 shrink-0">
+                    <img
+                      src={leader.photoUrl || `/images/${leader.clickLevel || 1}lvl.png`}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = `/images/${leader.clickLevel || 1}lvl.png`;
+                      }}
+                    />
+                  </div>
+
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span>{leader.name}</span>
+                      <span className="truncate max-w-[120px]">{leader.name}</span>
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-white/60">
                         Ур. {leader.clickLevel}
                       </span>

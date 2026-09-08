@@ -7,7 +7,6 @@ import {
   Volume2,
   VolumeX,
   Vibrate,
-  ShieldAlert,
   HelpCircle,
   Sparkles,
 } from "lucide-react";
@@ -122,22 +121,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
             </button>
           </div>
-        </div>
-
-
-        {/* Hidden Admin Direct Button */}
-        <div className="pt-2">
-          <button
-            onClick={() => {
-              triggerHaptic("selection");
-              onClose();
-              router.push("/admin");
-            }}
-            className="w-full py-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center justify-center gap-2"
-          >
-            <ShieldAlert size={15} />
-            Админ-панель (/admin)
-          </button>
         </div>
 
         {/* Version Footer with Easter Egg */}

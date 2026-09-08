@@ -24,6 +24,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   passiveIncomePerSec,
   onOpenSettings,
 }) => {
+  const [avatarFailed, setAvatarFailed] = React.useState(false);
   const currentLevelConfig = LEVELS[(user.clickLevel || 1) - 1] || LEVELS[0];
   const displayName = user.username ? `@${user.username}` : user.firstName || "Тапер Labubu";
 
@@ -34,13 +35,22 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {/* User profile capsule */}
         <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-full py-1.5 px-3 backdrop-blur-md">
           <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/10 border border-white/20 shrink-0">
-            <Image
-              src={currentLevelConfig.image}
-              alt="Labubu Avatar"
-              fill
-              className="object-cover"
-              sizes="32px"
-            />
+            {user.photoUrl && !avatarFailed ? (
+              <img
+                src={user.photoUrl}
+                alt="Avatar"
+                className="w-full h-full object-cover"
+                onError={() => setAvatarFailed(true)}
+              />
+            ) : (
+              <Image
+                src={currentLevelConfig.image}
+                alt="Labubu Avatar"
+                fill
+                className="object-cover"
+                sizes="32px"
+              />
+            )}
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-semibold text-white/90 truncate max-w-[120px]">
