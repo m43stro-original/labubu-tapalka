@@ -50,6 +50,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
   const animFrameIdRef = useRef<number>(0);
   const imageLoadedRef = useRef<HTMLImageElement | null>(null);
   const treadOffsetRef = useRef(0);
+  const lastDropTimesRef = useRef<Record<number, number>>({});
 
   // Synchronize dynamic props into refs to avoid restarting the 60 FPS animation loop
   const onCoinEarnedRef = useRef(onCoinEarned);
@@ -57,6 +58,9 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
   const beltSpeedLevelRef = useRef(beltSpeedLevel);
   beltSpeedLevelRef.current = beltSpeedLevel;
+
+  const dropSpeedLevelRef = useRef(dropSpeedLevel);
+  dropSpeedLevelRef.current = dropSpeedLevel;
 
   const dispenserCountRef = useRef(dispenserCount);
   dispenserCountRef.current = dispenserCount;
@@ -72,71 +76,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       imageLoadedRef.current = img;
     };
   }, [labubuImage]);
-
-  // Drop frequency in ms
-  const dropIntervalMs = Math.max(800, 3600 - (dropSpeedLevel - 1) * 280);
-
-  // Periodic dispenser drop spawner with overlap prevention
-  useEffect(() => {
-    let pipeIndex = 0;
-
-    const interval = setInterval(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const w = canvas.clientWidth;
-      if (w <= 0) return;
-
-      // Calculate pipe positions
-      const count = dispenserCountRef.current;
-      let pipeFractions: number[] = [];
-      if (count === 1) pipeFractions = [0.32];
-      else if (count === 2) pipeFractions = [0.22, 0.52];
-      else if (count === 3) pipeFractions = [0.18, 0.38, 0.60];
-      else pipeFractions = [0.15, 0.32, 0.50, 0.68];
-
-      // Find a pipe that has free space underneath (minimum 56px clearance from any figurine)
-      let chosenFraction: number | null = null;
-      for (let i = 0; i < pipeFractions.length; i++) {
-        const candidateIdx = (pipeIndex + i) % pipeFractions.length;
-        const frac = pipeFractions[candidateIdx];
-        const px = w * frac;
-
-        // Figurine center width is ~48px, require >= 56px to ensure zero overlap
-        const isOccupied = itemsRef.current.some(
-          (item) => Math.abs(item.x - px) < 56
-        );
-
-        if (!isOccupied) {
-          chosenFraction = frac;
-          pipeIndex = candidateIdx + 1;
-          break;
-        }
-      }
-
-      // Drop only if a clear pipe was found
-      if (chosenFraction !== null) {
-        const xPos = w * chosenFraction;
-        itemsRef.current.push({
-          id: nextIdRef.current++,
-          x: xPos,
-          y: 20, // top pipe exit
-          vy: 1.5,
-          isFalling: true,
-          scaleX: 0.9,
-          scaleY: 1.1,
-          squashTimer: 0,
-        });
-
-        // Cap max items in memory
-        if (itemsRef.current.length > 25) {
-          itemsRef.current = itemsRef.current.slice(-20);
-        }
-      }
-    }, dropIntervalMs);
-
-    return () => clearInterval(interval);
-  }, [dropIntervalMs]);
 
   // Main 60 FPS Canvas Physics & Render Loop
   useEffect(() => {
@@ -167,9 +106,14 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
       ctx.clearRect(0, 0, w, h);
 
+      const now = performance.now();
       const currentDispCount = dispenserCountRef.current;
       const currentBeltSpeedLevel = beltSpeedLevelRef.current;
+      const currentDropSpeedLevel = dropSpeedLevelRef.current;
       const currentBaseIncome = baseIncomePerDropRef.current;
+
+      // Drop frequency based on upgrade level
+      const dropIntervalMs = Math.max(750, 3000 - (currentDropSpeedLevel - 1) * 250);
 
       // Belt coordinates
       const beltY = h - 60;
@@ -177,36 +121,84 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       const vaultX = w - 65;
       const beltSpeed = 1.2 + (currentBeltSpeedLevel - 1) * 0.35;
 
-      // 1. Draw Pipes at top
+      // Dispenser pipe fractions
       let pipeFractions: number[] = [];
       if (currentDispCount === 1) pipeFractions = [0.32];
-      else if (currentDispCount === 2) pipeFractions = [0.22, 0.52];
-      else if (currentDispCount === 3) pipeFractions = [0.18, 0.38, 0.60];
-      else pipeFractions = [0.15, 0.32, 0.50, 0.68];
+      else if (currentDispCount === 2) pipeFractions = [0.22, 0.50];
+      else if (currentDispCount === 3) pipeFractions = [0.18, 0.38, 0.58];
+      else pipeFractions = [0.15, 0.31, 0.47, 0.63];
 
+      // Independent production for EACH dispenser
+      // If belt is slow, figurines pile up closely; dispensers wait when congested underneath
+      for (let i = 0; i < pipeFractions.length; i++) {
+        const px = w * pipeFractions[i];
+
+        if (lastDropTimesRef.current[i] === undefined) {
+          // Stagger initial drop rhythm
+          lastDropTimesRef.current[i] = now - (i * (dropIntervalMs / currentDispCount));
+        }
+
+        const timeSinceLastDrop = now - lastDropTimesRef.current[i];
+        if (timeSinceLastDrop >= dropIntervalMs) {
+          // Check if space directly under pipe is clear (44px min distance)
+          const isOccupied = itemsRef.current.some(
+            (item) => Math.abs(item.x - px) < 44
+          );
+
+          if (!isOccupied) {
+            lastDropTimesRef.current[i] = now;
+            itemsRef.current.push({
+              id: nextIdRef.current++,
+              x: px,
+              y: 20, // top pipe exit
+              vy: 1.6,
+              isFalling: true,
+              scaleX: 0.9,
+              scaleY: 1.1,
+              squashTimer: 0,
+            });
+
+            if (itemsRef.current.length > 35) {
+              itemsRef.current = itemsRef.current.slice(-25);
+            }
+          }
+        }
+      }
+
+      // 1. Draw Pipes at top with real-time congestion LED indicators
       pipeFractions.forEach((frac) => {
         const px = w * frac;
+        const isBlocked = itemsRef.current.some(
+          (item) => Math.abs(item.x - px) < 44
+        );
+
         // Pipe body
         const grad = ctx.createLinearGradient(px - 14, 0, px + 14, 0);
         grad.addColorStop(0, "#475569");
-        grad.addColorStop(0.5, "#94a3b8");
+        grad.addColorStop(0.5, isBlocked ? "#64748b" : "#94a3b8");
         grad.addColorStop(1, "#334155");
 
         ctx.fillStyle = grad;
         ctx.fillRect(px - 14, 0, 28, 42);
 
         // Pipe rim
-        ctx.fillStyle = "#1e293b";
+        ctx.fillStyle = isBlocked ? "#334155" : "#1e293b";
         ctx.fillRect(px - 17, 38, 34, 8);
 
-        // Pressure dial
+        // Pressure dial / LED status (Red = congested/waiting, Green = ready/active)
         ctx.beginPath();
         ctx.arc(px, 20, 6, 0, Math.PI * 2);
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = isBlocked ? "#7f1d1d" : "#064e3b";
         ctx.fill();
-        ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = isBlocked ? "#ef4444" : "#10b981";
+        ctx.lineWidth = 1.8;
         ctx.stroke();
+
+        // Inner status dot
+        ctx.beginPath();
+        ctx.arc(px, 20, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = isBlocked ? "#f87171" : "#34d399";
+        ctx.fill();
       });
 
       // 2. Draw Conveyor Belt Frame & Rollers
