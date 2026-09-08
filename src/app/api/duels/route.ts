@@ -43,13 +43,14 @@ export async function GET(req: NextRequest) {
     });
 
     let userDuels: any[] = [];
+    let currentUser: any = null;
     if (telegramIdStr) {
       const tId = BigInt(telegramIdStr);
-      const user = await prisma.user.findUnique({ where: { telegramId: tId } });
-      if (user) {
+      currentUser = await prisma.user.findUnique({ where: { telegramId: tId } });
+      if (currentUser) {
         userDuels = await prisma.duel.findMany({
           where: {
-            OR: [{ creatorId: user.id }, { opponentId: user.id }],
+            OR: [{ creatorId: currentUser.id }, { opponentId: currentUser.id }],
             status: "FINISHED",
           },
           include: {
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
         betAmount: d.betAmount,
         gameType: d.gameType,
         winnerId: d.winnerId,
-        isWin: telegramIdStr ? d.winner?.username === (d.creator.username || d.opponent?.username) : false,
+        isWin: currentUser ? d.winnerId === currentUser.id : false,
         resultData: d.resultData ? JSON.parse(d.resultData) : null,
       })),
     });
@@ -218,7 +219,22 @@ export async function POST(req: NextRequest) {
 
       const prizePool = duel.betAmount * 2;
 
-      // Atomic duel execution
+      // Optimistic lock: ensure status is STILL "OPEN" before accepting
+      const duelLock = await prisma.duel.updateMany({
+        where: { id: duel.id, status: "OPEN" },
+        data: {
+          opponentId: user.id,
+          status: "FINISHED",
+          winnerId,
+          resultData: JSON.stringify(resultData),
+        },
+      });
+
+      if (duelLock.count === 0) {
+        return NextResponse.json({ error: "Дуэль уже принята другим игроком" }, { status: 400 });
+      }
+
+      // Atomic balance update
       await prisma.$transaction([
         // Deduct bet from challenger
         prisma.user.update({
@@ -231,16 +247,6 @@ export async function POST(req: NextRequest) {
           data: {
             balance: { increment: prizePool },
             totalEarned: { increment: prizePool },
-          },
-        }),
-        // Mark duel finished
-        prisma.duel.update({
-          where: { id: duel.id },
-          data: {
-            opponentId: user.id,
-            status: "FINISHED",
-            winnerId,
-            resultData: JSON.stringify(resultData),
           },
         }),
       ]);
@@ -264,28 +270,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing duelId" }, { status: 400 });
       }
 
-      const duel = await prisma.duel.findUnique({
-        where: { id: duelId },
+      // Optimistic cancel lock: ensure duel is still OPEN and belongs to creator
+      const duelCancel = await prisma.duel.updateMany({
+        where: { id: duelId, status: "OPEN", creatorId: user.id },
+        data: { status: "CANCELLED" },
       });
 
-      if (!duel || duel.status !== "OPEN") {
-        return NextResponse.json({ error: "Лобби уже закрыто или завершено" }, { status: 400 });
+      if (duelCancel.count === 0) {
+        return NextResponse.json({ error: "Лобби уже закрыто или принято другим игроком" }, { status: 400 });
       }
 
-      if (duel.creatorId !== user.id) {
-        return NextResponse.json({ error: "Только создатель может отменить лобби" }, { status: 403 });
-      }
+      const duel = await prisma.duel.findUnique({ where: { id: duelId } });
+      const refundAmount = duel ? duel.betAmount : 0;
 
-      const [updatedUser] = await prisma.$transaction([
-        prisma.user.update({
-          where: { id: user.id },
-          data: { balance: { increment: duel.betAmount } },
-        }),
-        prisma.duel.update({
-          where: { id: duel.id },
-          data: { status: "CANCELLED" },
-        }),
-      ]);
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: { balance: { increment: refundAmount } },
+      });
 
       return NextResponse.json({
         success: true,

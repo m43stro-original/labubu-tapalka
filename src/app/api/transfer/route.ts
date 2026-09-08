@@ -58,12 +58,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Получатель заблокирован" }, { status: 403 });
     }
 
-    // Atomic transaction
-    const [updatedSender, updatedReceiver, transferLog] = await prisma.$transaction([
-      prisma.user.update({
-        where: { id: sender.id },
-        data: { balance: { decrement: numAmount } },
-      }),
+    // Safe atomic balance deduction with race-condition protection
+    const senderLock = await prisma.user.updateMany({
+      where: { id: sender.id, balance: { gte: numAmount } },
+      data: { balance: { decrement: numAmount } },
+    });
+
+    if (senderLock.count === 0) {
+      return NextResponse.json({ error: "Недостаточно рублей на балансе" }, { status: 400 });
+    }
+
+    const [updatedReceiver, transferLog] = await prisma.$transaction([
       prisma.user.update({
         where: { id: receiver.id },
         data: { balance: { increment: numAmount } },
@@ -77,9 +82,11 @@ export async function POST(req: NextRequest) {
       }),
     ]);
 
+    const updatedSender = await prisma.user.findUnique({ where: { id: sender.id } });
+
     return NextResponse.json({
       success: true,
-      senderBalance: updatedSender.balance,
+      senderBalance: updatedSender?.balance ?? sender.balance - numAmount,
       receiverUsername: updatedReceiver.username || updatedReceiver.firstName || "Пользователь",
       amount: numAmount,
       transferId: transferLog.id,

@@ -46,25 +46,28 @@ export async function GET(req: NextRequest) {
       let referrerId: string | null = null;
 
       // Check referral invitation
-      if (refCode && refCode !== telegramIdStr) {
+      if (refCode) {
         try {
-          const referrerTelegramId = BigInt(refCode);
-          const referrer = await prisma.user.findUnique({
-            where: { telegramId: referrerTelegramId },
-          });
-          if (referrer) {
-            referrerId = referrer.id;
-            startingBalance += REFERRAL_BONUS_INVITEE;
-            // Reward referrer
-            await prisma.user.update({
-              where: { id: referrer.id },
-              data: {
-                balance: { increment: REFERRAL_BONUS_INVITER },
-                totalEarned: { increment: REFERRAL_BONUS_INVITER },
-                referralCount: { increment: 1 },
-                referralEarnings: { increment: REFERRAL_BONUS_INVITER },
-              },
+          const cleanRef = refCode.replace(/^ref_/, "");
+          if (cleanRef && cleanRef !== telegramIdStr) {
+            const referrerTelegramId = BigInt(cleanRef);
+            const referrer = await prisma.user.findUnique({
+              where: { telegramId: referrerTelegramId },
             });
+            if (referrer) {
+              referrerId = referrer.id;
+              startingBalance += REFERRAL_BONUS_INVITEE;
+              // Reward referrer
+              await prisma.user.update({
+                where: { id: referrer.id },
+                data: {
+                  balance: { increment: REFERRAL_BONUS_INVITER },
+                  totalEarned: { increment: REFERRAL_BONUS_INVITER },
+                  referralCount: { increment: 1 },
+                  referralEarnings: { increment: REFERRAL_BONUS_INVITER },
+                },
+              });
+            }
           }
         } catch {
           // Ignore invalid referral code
