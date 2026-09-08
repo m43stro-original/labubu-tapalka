@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Zap, ArrowUpCircle, BatteryCharging } from "lucide-react";
 import { formatRubles, formatCompactRubles } from "@/lib/utils";
 import { triggerHaptic, playCoinSound } from "@/lib/sound-fx";
+import { getClickPowerCost, getMaxEnergyCost, getEnergyRegenCost } from "@/lib/game-engine";
 
 interface UpgradesModalProps {
   isOpen: boolean;
@@ -32,11 +33,11 @@ export const UpgradesModal: React.FC<UpgradesModalProps> = ({
   if (!isOpen) return null;
 
   // Cost calculations
-  const clickPowerCost = Math.floor(60 * Math.pow(1.52, user.clickUpgrade - 1));
+  const clickPowerCost = getClickPowerCost(user.clickUpgrade);
   const maxEnergyLevel = Math.floor((user.maxEnergy - 500) / 200) + 1;
-  const maxEnergyCost = Math.floor(180 * Math.pow(1.58, maxEnergyLevel - 1));
+  const maxEnergyCost = getMaxEnergyCost(maxEnergyLevel);
   const energyRegenLevel = Math.floor(user.energyRegen - 3) + 1;
-  const energyRegenCost = Math.floor(350 * Math.pow(1.68, energyRegenLevel - 1));
+  const energyRegenCost = getEnergyRegenCost(energyRegenLevel);
 
   const handleBuy = async (type: "click_power" | "max_energy" | "energy_regen" | "level_up") => {
     try {

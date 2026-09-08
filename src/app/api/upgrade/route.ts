@@ -2,7 +2,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { LEVELS } from "@/lib/constants";
-import { calculateOfflineEarnings } from "@/lib/game-engine";
+import {
+  calculateOfflineEarnings,
+  getClickPowerCost,
+  getMaxEnergyCost,
+  getEnergyRegenCost,
+} from "@/lib/game-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     if (upgradeType === "click_power") {
       const curUpgrade = user.clickUpgrade;
-      cost = Math.floor(60 * Math.pow(1.52, curUpgrade - 1));
+      cost = getClickPowerCost(curUpgrade);
 
       if (user.balance < cost) {
         return NextResponse.json({ error: "Недостаточно рублей для прокачки клика" }, { status: 400 });
@@ -54,7 +59,7 @@ export async function POST(req: NextRequest) {
       updates.clickPower = user.clickPower + powerBonus;
     } else if (upgradeType === "max_energy") {
       const capLevel = Math.floor((user.maxEnergy - 500) / 200) + 1;
-      cost = Math.floor(180 * Math.pow(1.58, capLevel - 1));
+      cost = getMaxEnergyCost(capLevel);
 
       if (user.balance < cost) {
         return NextResponse.json({ error: "Недостаточно рублей для запаса энергии" }, { status: 400 });
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest) {
       updates.energy = user.energy + 200;
     } else if (upgradeType === "energy_regen") {
       const regenLevel = Math.floor(user.energyRegen - 3) + 1;
-      cost = Math.floor(350 * Math.pow(1.68, regenLevel - 1));
+      cost = getEnergyRegenCost(regenLevel);
 
       if (user.balance < cost) {
         return NextResponse.json({ error: "Недостаточно рублей для скорости регенерации" }, { status: 400 });

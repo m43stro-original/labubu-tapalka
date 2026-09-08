@@ -2,7 +2,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { FLOOR_CONFIGS } from "@/lib/constants";
-import { calculateOfflineEarnings } from "@/lib/game-engine";
+import {
+  calculateOfflineEarnings,
+  getBeltSpeedCost,
+  getDropSpeedCost,
+  getDispenserCost,
+} from "@/lib/game-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,8 +77,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Максимальная скорость ленты достигнута" }, { status: 400 });
       }
 
-      const baseCost = Math.max(100, Math.floor(floorConfig.baseIncomePerDrop * 40));
-      cost = Math.floor(baseCost * Math.pow(1.42, floor.beltSpeedLevel - 1));
+      cost = getBeltSpeedCost(floorConfig.baseIncomePerDrop, floor.beltSpeedLevel);
 
       if (user.balance < cost) {
         return NextResponse.json(
@@ -91,8 +95,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Максимальная скорость создания достигнута" }, { status: 400 });
       }
 
-      const baseCost = Math.max(150, Math.floor(floorConfig.baseIncomePerDrop * 55));
-      cost = Math.floor(baseCost * Math.pow(1.5, floor.dropSpeedLevel - 1));
+      cost = getDropSpeedCost(floorConfig.baseIncomePerDrop, floor.dropSpeedLevel);
 
       if (user.balance < cost) {
         return NextResponse.json(
@@ -110,8 +113,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Максимум 4 автомата на конвейере" }, { status: 400 });
       }
 
-      const baseCost = Math.max(300, Math.floor(floorConfig.baseIncomePerDrop * 120));
-      cost = Math.floor(baseCost * Math.pow(3.2, floor.dispenserCount - 1));
+      cost = getDispenserCost(floorConfig.baseIncomePerDrop, floor.dispenserCount);
 
       if (user.balance < cost) {
         return NextResponse.json(

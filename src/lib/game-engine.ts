@@ -99,3 +99,33 @@ export function validateTaps(
     effectiveRegen: regeneratedEnergy,
   };
 }
+
+/**
+ * Economic Cost Calculations for Clicker & Factory Upgrades
+ */
+export function getClickPowerCost(level: number): number {
+  return Math.floor(120 * Math.pow(1.62, Math.max(1, level) - 1));
+}
+
+export function getMaxEnergyCost(level: number): number {
+  return Math.floor(300 * Math.pow(1.68, Math.max(1, level) - 1));
+}
+
+export function getEnergyRegenCost(level: number): number {
+  return Math.floor(550 * Math.pow(1.78, Math.max(1, level) - 1));
+}
+
+export function getBeltSpeedCost(baseIncomePerDrop: number, currentLevel: number): number {
+  const baseCost = Math.max(250, Math.floor(baseIncomePerDrop * 80));
+  return Math.floor(baseCost * Math.pow(1.55, Math.max(1, currentLevel) - 1));
+}
+
+export function getDropSpeedCost(baseIncomePerDrop: number, currentLevel: number): number {
+  const baseCost = Math.max(350, Math.floor(baseIncomePerDrop * 120));
+  return Math.floor(baseCost * Math.pow(1.65, Math.max(1, currentLevel) - 1));
+}
+
+export function getDispenserCost(baseIncomePerDrop: number, currentCount: number): number {
+  const baseCost = Math.max(750, Math.floor(baseIncomePerDrop * 250));
+  return Math.floor(baseCost * Math.pow(3.5, Math.max(1, currentCount) - 1));
+}

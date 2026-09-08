@@ -108,12 +108,12 @@ export const LEVELS: LevelConfig[] = [
 
 export const FLOOR_CONFIGS = [
   { floor: 1, unlockCost: 500, baseIncomePerDrop: 2, name: "Этаж 1" },
-  { floor: 2, unlockCost: 5000, baseIncomePerDrop: 15, name: "Этаж 2" },
-  { floor: 3, unlockCost: 45000, baseIncomePerDrop: 80, name: "Этаж 3" },
-  { floor: 4, unlockCost: 350000, baseIncomePerDrop: 450, name: "Этаж 4" },
-  { floor: 5, unlockCost: 2500000, baseIncomePerDrop: 2500, name: "Этаж 5" },
-  { floor: 6, unlockCost: 18000000, baseIncomePerDrop: 15000, name: "Этаж 6" },
-  { floor: 7, unlockCost: 120000000, baseIncomePerDrop: 100000, name: "Этаж 7" },
+  { floor: 2, unlockCost: 15000, baseIncomePerDrop: 15, name: "Этаж 2" },
+  { floor: 3, unlockCost: 120000, baseIncomePerDrop: 80, name: "Этаж 3" },
+  { floor: 4, unlockCost: 900000, baseIncomePerDrop: 450, name: "Этаж 4" },
+  { floor: 5, unlockCost: 6000000, baseIncomePerDrop: 2500, name: "Этаж 5" },
+  { floor: 6, unlockCost: 45000000, baseIncomePerDrop: 15000, name: "Этаж 6" },
+  { floor: 7, unlockCost: 250000000, baseIncomePerDrop: 100000, name: "Этаж 7" },
 ];
 
 export const MAX_OFFLINE_SECONDS = 3 * 3600; // 3 hours

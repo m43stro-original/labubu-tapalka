@@ -18,6 +18,7 @@ import { ConveyorBelt } from "./ConveyorBelt";
 import { FLOOR_CONFIGS, LEVELS } from "@/lib/constants";
 import { formatRubles, formatCompactRubles } from "@/lib/utils";
 import { triggerHaptic, playCoinSound } from "@/lib/sound-fx";
+import { getBeltSpeedCost, getDropSpeedCost, getDispenserCost } from "@/lib/game-engine";
 
 interface FactoryViewProps {
   user: any;
@@ -51,15 +52,10 @@ export const FactoryView: React.FC<FactoryViewProps> = ({
   const levelConfig =
     LEVELS[selectedFloorNum - 1] || LEVELS[0];
 
-  // Upgrade costs
-  const beltBase = Math.max(100, Math.floor(floorConfig.baseIncomePerDrop * 40));
-  const beltCost = Math.floor(beltBase * Math.pow(1.42, currentFloor.beltSpeedLevel - 1));
-
-  const dropBase = Math.max(150, Math.floor(floorConfig.baseIncomePerDrop * 55));
-  const dropCost = Math.floor(dropBase * Math.pow(1.5, currentFloor.dropSpeedLevel - 1));
-
-  const dispBase = Math.max(300, Math.floor(floorConfig.baseIncomePerDrop * 120));
-  const dispCost = Math.floor(dispBase * Math.pow(3.2, currentFloor.dispenserCount - 1));
+  // Upgrade costs from centralized game engine
+  const beltCost = getBeltSpeedCost(floorConfig.baseIncomePerDrop, currentFloor.beltSpeedLevel);
+  const dropCost = getDropSpeedCost(floorConfig.baseIncomePerDrop, currentFloor.dropSpeedLevel);
+  const dispCost = getDispenserCost(floorConfig.baseIncomePerDrop, currentFloor.dispenserCount);
 
   // Perform factory upgrade action
   const handleFactoryAction = async (action: string) => {
