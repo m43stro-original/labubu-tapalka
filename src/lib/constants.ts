@@ -107,7 +107,7 @@ export const LEVELS: LevelConfig[] = [
 ];
 
 export const FLOOR_CONFIGS = [
-  { floor: 1, unlockCost: 500, baseIncomePerDrop: 2, name: "Этаж 1" },
+  { floor: 1, unlockCost: 3000, baseIncomePerDrop: 2, name: "Этаж 1" },
   { floor: 2, unlockCost: 15000, baseIncomePerDrop: 15, name: "Этаж 2" },
   { floor: 3, unlockCost: 120000, baseIncomePerDrop: 80, name: "Этаж 3" },
   { floor: 4, unlockCost: 900000, baseIncomePerDrop: 450, name: "Этаж 4" },
