@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { Zap, Sparkles, ArrowRight } from "lucide-react";
+import { Zap, Sparkles, ArrowRight, BatteryCharging } from "lucide-react";
 import { ClickerCircle } from "./ClickerCircle";
 import { ComboFeverBar } from "./ComboFeverBar";
 import { FloatingNumbers, FloatingItem } from "./FloatingNumber";
@@ -179,7 +179,7 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
     }
   };
 
-  const handleUpgrade = async (type: "click_power" | "max_energy" | "energy_regen" | "level_up") => {
+  const handleUpgrade = async (type: "max_energy" | "energy_regen" | "level_up") => {
     const res = await fetch("/api/upgrade", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -252,9 +252,14 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
                 />
               </div>
               <div className="flex flex-col">
-                <span className="font-bold text-white text-xs">
-                  {nextLevelConfig.name} (Ур. {nextLevelConfig.level})
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-white text-xs">
+                    {nextLevelConfig.name} (Ур. {nextLevelConfig.level})
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[9px] font-black">
+                    +{nextLevelConfig.baseClickPower} ₽/тап
+                  </span>
+                </div>
                 <span className="text-[10px] text-white/50">
                   До следующей эволюции
                 </span>
@@ -335,10 +340,10 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
             triggerHaptic("selection");
             setIsUpgradesOpen(true);
           }}
-          className="btn-pressable w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-brand-ruble/20 via-blue-600/20 to-brand-ruble/10 border border-brand-ruble/40 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/10"
+          className="btn-pressable w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-500/20 via-blue-600/20 to-cyan-500/10 border border-cyan-500/30 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/10"
         >
-          <Zap size={16} className="text-brand-ruble fill-brand-ruble" />
-          <span>Прокачка кликов и энергии</span>
+          <BatteryCharging size={16} className="text-cyan-400" />
+          <span>Прокачка энергии</span>
         </button>
       </div>
 

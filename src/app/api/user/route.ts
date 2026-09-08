@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateOfflineEarnings } from "@/lib/game-engine";
-import { FLOOR_CONFIGS, REFERRAL_BONUS_INVITEE, REFERRAL_BONUS_INVITER } from "@/lib/constants";
+import { FLOOR_CONFIGS, LEVELS, REFERRAL_BONUS_INVITEE, REFERRAL_BONUS_INVITER } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
   try {
@@ -128,6 +128,16 @@ export async function GET(req: NextRequest) {
           lastPassiveSync: now,
           lastTapSync: now,
         },
+        include: { floors: { orderBy: { floorNumber: "asc" } } },
+      });
+    }
+
+    // Ensure clickPower strictly reflects current evolution level
+    const expectedClickPower = LEVELS[user.clickLevel - 1]?.baseClickPower || 1;
+    if (user.clickPower !== expectedClickPower) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { clickPower: expectedClickPower },
         include: { floors: { orderBy: { floorNumber: "asc" } } },
       });
     }

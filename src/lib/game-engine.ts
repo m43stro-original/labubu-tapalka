@@ -1,6 +1,7 @@
 import { ConveyorFloor, User } from "@prisma/client";
 import {
   FLOOR_CONFIGS,
+  LEVELS,
   MAX_OFFLINE_SECONDS,
   MAX_TAPS_PER_SECOND,
   FEVER_MULTIPLIER,
@@ -90,7 +91,8 @@ export function validateTaps(
 
   const newEnergy = Math.max(0, regeneratedEnergy - validatedTaps);
   const multiplier = isFever ? FEVER_MULTIPLIER : 1;
-  const earnedRubles = validatedTaps * user.clickPower * multiplier;
+  const currentClickPower = LEVELS[user.clickLevel - 1]?.baseClickPower ?? user.clickPower ?? 1;
+  const earnedRubles = validatedTaps * currentClickPower * multiplier;
 
   return {
     validatedTaps,

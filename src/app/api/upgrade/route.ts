@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { LEVELS } from "@/lib/constants";
 import {
   calculateOfflineEarnings,
-  getClickPowerCost,
   getMaxEnergyCost,
   getEnergyRegenCost,
 } from "@/lib/game-engine";
@@ -46,17 +45,10 @@ export async function POST(req: NextRequest) {
     const updates: Record<string, unknown> = {};
 
     if (upgradeType === "click_power") {
-      const curUpgrade = user.clickUpgrade;
-      cost = getClickPowerCost(curUpgrade);
-
-      if (user.balance < cost) {
-        return NextResponse.json({ error: "Недостаточно рублей для прокачки клика" }, { status: 400 });
-      }
-
-      const powerBonus = Math.max(1, Math.round(user.clickLevel * 1.8));
-      updates.balance = user.balance - cost;
-      updates.clickUpgrade = curUpgrade + 1;
-      updates.clickPower = user.clickPower + powerBonus;
+      return NextResponse.json(
+        { error: "Сила клика увеличивается только при повышении уровня эволюции!" },
+        { status: 400 }
+      );
     } else if (upgradeType === "max_energy") {
       const capLevel = Math.floor((user.maxEnergy - 500) / 200) + 1;
       cost = getMaxEnergyCost(capLevel);
@@ -100,7 +92,7 @@ export async function POST(req: NextRequest) {
 
       updates.balance = user.balance - cost;
       updates.clickLevel = nextConfig.level;
-      updates.clickPower = Math.max(user.clickPower, nextConfig.baseClickPower);
+      updates.clickPower = nextConfig.baseClickPower;
     } else {
       return NextResponse.json({ error: "Неизвестный тип прокачки" }, { status: 400 });
     }
