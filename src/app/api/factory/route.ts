@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { FLOOR_CONFIGS } from "@/lib/constants";
+import { calculateOfflineEarnings } from "@/lib/game-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,13 +14,27 @@ export async function POST(req: NextRequest) {
     }
 
     const tId = BigInt(telegramId);
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { telegramId: tId },
       include: { floors: true },
     });
 
     if (!user) {
       return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
+    }
+
+    // Sync any passive earnings up to this exact moment
+    const offlineResult = calculateOfflineEarnings(user.lastPassiveSync, user.floors);
+    if (offlineResult.earnedRubles > 0) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          balance: { increment: offlineResult.earnedRubles },
+          totalEarned: { increment: offlineResult.earnedRubles },
+          lastPassiveSync: new Date(),
+        },
+        include: { floors: true },
+      });
     }
 
     const floor = user.floors.find((f) => f.floorNumber === floorNumber);

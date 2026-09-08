@@ -37,6 +37,16 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
   // Sync batching
   const pendingTapsRef = useRef(0);
   const nextFloatingIdRef = useRef(1);
+  const isSyncingRef = useRef(false);
+
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const isFeverRef = useRef(isFever);
+  isFeverRef.current = isFever;
+
+  const onRefreshUserRef = useRef(onRefreshUser);
+  onRefreshUserRef.current = onRefreshUser;
 
   // Next level evolution info
   const nextLevelIndex = user.clickLevel; // 1-based level, index in 0-based LEVELS array is current clickLevel
@@ -63,41 +73,64 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
     return () => clearInterval(comboInterval);
   }, [isFever]);
 
-  // Sync pending taps to server periodically (every 1.8 seconds)
-  useEffect(() => {
-    const syncInterval = setInterval(async () => {
-      if (pendingTapsRef.current > 0) {
-        const tapsToSync = pendingTapsRef.current;
-        pendingTapsRef.current = 0;
+  // Flush pending taps to server
+  const flushTaps = React.useCallback(async () => {
+    if (pendingTapsRef.current <= 0 || isSyncingRef.current) return;
+    const tapsToSync = pendingTapsRef.current;
+    pendingTapsRef.current = 0;
+    isSyncingRef.current = true;
 
-        try {
-          const res = await fetch("/api/tap", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              telegramId: user.telegramId,
-              tapCount: tapsToSync,
-              isFever,
-            }),
-          });
+    try {
+      const res = await fetch("/api/tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegramId: userRef.current.telegramId,
+          tapCount: tapsToSync,
+          isFever: isFeverRef.current,
+        }),
+      });
 
-          if (res.ok) {
-            const data = await res.json();
-            // Reconcile server balance
-            onRefreshUser({
-              ...user,
-              balance: data.balance,
-              energy: data.energy,
-            });
-          }
-        } catch (err) {
-          console.error("Failed to sync taps:", err);
-        }
+      if (res.ok) {
+        const data = await res.json();
+        // Reconcile server balance
+        onRefreshUserRef.current({
+          ...userRef.current,
+          balance: data.balance,
+          energy: data.energy,
+        });
+      } else {
+        // Restore taps if sync was rejected by server
+        pendingTapsRef.current += tapsToSync;
       }
-    }, 1800);
+    } catch (err) {
+      pendingTapsRef.current += tapsToSync;
+      console.error("Failed to sync taps:", err);
+    } finally {
+      isSyncingRef.current = false;
+    }
+  }, []);
 
-    return () => clearInterval(syncInterval);
-  }, [user.telegramId, isFever, user, onRefreshUser]);
+  // Sync pending taps to server periodically and reliably on unmount or tab switch
+  useEffect(() => {
+    const syncInterval = setInterval(flushTaps, 800);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushTaps();
+      }
+    };
+
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", flushTaps);
+
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", flushTaps);
+      flushTaps();
+    };
+  }, [flushTaps]);
 
   // Handle tap on center circle
   const handleTap = (clientX: number, clientY: number, isCrit: boolean) => {
@@ -115,6 +148,11 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
     // Update parent immediately in 0ms!
     onTapEarned(earned, newEnergy);
     pendingTapsRef.current += 1;
+
+    // Immediately flush if batch reaches 8 taps
+    if (pendingTapsRef.current >= 8) {
+      flushTaps();
+    }
 
     // Spawn floating number
     const newItem: FloatingItem = {
