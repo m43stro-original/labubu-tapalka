@@ -122,153 +122,183 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       const currentDropSpeedLevel = dropSpeedLevelRef.current;
       const currentBaseIncome = baseIncomePerDropRef.current;
 
-      // Kinematic constants for 100% collision-free, packed flow
-      const spriteSize = 44;
-      const SLOT_WIDTH = 50; // Minimum center-to-center distance (44px sprite + 6px gap)
+      // Kinematic constants
+      const spriteSize = 42;
+      const SAFE_LANDING_DIST = 44; // Clearance required on belt at landing moment
+      const MIN_BELT_SPACING = 46; // Minimum spacing between items on belt
       const beltY = h - 56;
       const beltHeight = 22;
-      const groundY = beltY - 16;
-      const nozzleY = 36;
-      const vaultX = w - 62;
+      const groundY = beltY - 15;
+      const nozzleY = 38;
+      const vaultX = w - 60;
 
-      // Belt speed scaling across 10 levels (px per frame)
-      const beltSpeed = 1.1 + (currentBeltSpeedLevel - 1) * 0.38;
+      // Fast, physical fall: 14 frames (~230ms) from nozzle to belt
+      const FALL_FRAMES = 14;
 
-      // Production cadence: level 1 = 1350ms, level 10 = 480ms
+      // Belt speed scaling across 10 levels: 1.4 px/frame (84px/s) up to 5.5 px/frame (330px/s)
+      // Tuned so Level 3+ easily handles 3 dispensers, and Level 6+ easily handles 4 dispensers
+      const beltSpeed = 1.4 + (currentBeltSpeedLevel - 1) * 0.46;
+
+      // Production cadence: level 1 = 1600ms, level 5 = 1080ms, level 10 = 650ms
       const dropIntervalMs = Math.max(
-        480,
-        Math.floor(1350 * Math.pow(0.895, currentDropSpeedLevel - 1))
+        650,
+        Math.floor(1600 * Math.pow(0.90, currentDropSpeedLevel - 1))
       );
 
-      // Total fall duration in frames (distance ~135px with vy=2.8, g=0.55)
-      const FALL_FRAMES = 18;
-
-      // Pipe coordinates evenly distributed across working portion of belt
+      // Pipe coordinates evenly spaced across belt
       let pipeFractions: number[] = [];
-      if (currentDispCount === 1) pipeFractions = [0.35];
-      else if (currentDispCount === 2) pipeFractions = [0.22, 0.52];
-      else if (currentDispCount === 3) pipeFractions = [0.16, 0.36, 0.56];
-      else pipeFractions = [0.14, 0.29, 0.44, 0.59];
+      if (currentDispCount === 1) pipeFractions = [0.38];
+      else if (currentDispCount === 2) pipeFractions = [0.22, 0.54];
+      else if (currentDispCount === 3) pipeFractions = [0.16, 0.37, 0.58];
+      else pipeFractions = [0.12, 0.27, 0.42, 0.57];
 
-      // Track blockage status per dispenser for HUD and LED status
-      const blockedPipes: boolean[] = new Array(pipeFractions.length).fill(false);
+      // Track progress and stalled status for each dispenser
+      const dispenserStates: { progress: number; isStalled: boolean; px: number }[] = [];
 
-      // Evaluate drop eligibility for each dispenser
       for (let i = 0; i < pipeFractions.length; i++) {
         const px = w * pipeFractions[i];
 
-        // 1. Predictive Collision Check
-        // Evaluates whether any figurine currently falling or riding on the belt
-        // will occupy the landing zone [px - SLOT_WIDTH, px + SLOT_WIDTH] at any time
-        // between now (t=0) and landing time (t=FALL_FRAMES).
-        let isBlocked = false;
-
-        for (const item of itemsRef.current) {
-          if (item.isFalling) {
-            if (Math.abs(item.x - px) < SLOT_WIDTH) {
-              isBlocked = true;
-              break;
-            }
-          } else {
-            // Riding on belt moving right: interval of item's presence during fall
-            // Overlaps pipe zone if item.x <= px + SLOT_WIDTH && item.x + beltSpeed*FALL_FRAMES >= px - SLOT_WIDTH
-            const willIntersect =
-              item.x <= px + SLOT_WIDTH &&
-              item.x + beltSpeed * FALL_FRAMES >= px - SLOT_WIDTH;
-
-            if (willIntersect) {
-              isBlocked = true;
-              break;
-            }
-          }
-        }
-
-        blockedPipes[i] = isBlocked;
-
         if (lastDropTimesRef.current[i] === undefined) {
-          // Stagger initial dispenser firing smoothly
+          // Stagger initial dispenser rhythm evenly across cycle
           lastDropTimesRef.current[i] = now - (i * (dropIntervalMs / currentDispCount));
         }
 
-        const timeSinceLastDrop = now - lastDropTimesRef.current[i];
+        const elapsed = now - lastDropTimesRef.current[i];
+        const rawProgress = elapsed / dropIntervalMs;
+        const progress = Math.min(1.0, Math.max(0.0, rawProgress));
+        const isReadyToDrop = rawProgress >= 1.0;
 
-        // Only drop if timer is ready AND landing zone is guaranteed 100% clear
-        if (timeSinceLastDrop >= dropIntervalMs && !isBlocked) {
+        // Accurate Landing Clearance Check:
+        // Does any item currently fall nearby, OR will any item on the belt be within
+        // SAFE_LANDING_DIST (44px) at the exact moment of landing (FALL_FRAMES later)?
+        const isBlocked = itemsRef.current.some((item) => {
+          if (item.isFalling) {
+            return Math.abs(item.x - px) < SAFE_LANDING_DIST;
+          }
+          const landingX = item.x + beltSpeed * FALL_FRAMES;
+          return Math.abs(landingX - px) < SAFE_LANDING_DIST;
+        });
+
+        const isStalled = isReadyToDrop && isBlocked;
+        dispenserStates.push({ progress, isStalled, px });
+
+        // If crafting is complete and the landing spot is clear: DROP!
+        if (isReadyToDrop && !isBlocked) {
           lastDropTimesRef.current[i] = now;
           itemsRef.current.push({
             id: nextIdRef.current++,
             x: px,
             y: nozzleY,
-            vy: 2.8,
+            vy: 3.8,
             isFalling: true,
-            scaleX: 0.88,
-            scaleY: 1.15,
+            scaleX: 0.86,
+            scaleY: 1.18,
             squashTimer: 0,
           });
 
-          // Small steam puff on dispenser drop
+          // Small steam puff on drop
           for (let p = 0; p < 3; p++) {
             particlesRef.current.push({
               x: px + (Math.random() - 0.5) * 8,
-              y: nozzleY + 6,
+              y: nozzleY + 4,
               vx: (Math.random() - 0.5) * 1.5,
-              vy: Math.random() * -1.5,
-              alpha: 0.6,
+              vy: Math.random() * -1.2,
+              alpha: 0.55,
               color: "#94a3b8",
-              size: 2.5 + Math.random() * 2,
+              size: 2.5 + Math.random() * 1.5,
             });
           }
 
-          // Safety buffer
           if (itemsRef.current.length > 40) {
             itemsRef.current = itemsRef.current.slice(-30);
           }
         }
       }
 
-      // 1. Draw Pipes with glowing status LEDs and Waiting tags
-      pipeFractions.forEach((frac, i) => {
-        const px = w * frac;
-        const isBlocked = blockedPipes[i];
+      // 1. Draw Dispensers with Vertical Progress Bars
+      const pulse = Math.sin(now * 0.012) * 0.35 + 0.65; // 0.3..1.0 pulse for stalled state
 
-        // Pipe body
-        const grad = ctx.createLinearGradient(px - 14, 0, px + 14, 0);
-        grad.addColorStop(0, "#334155");
-        grad.addColorStop(0.5, isBlocked ? "#475569" : "#64748b");
-        grad.addColorStop(1, "#1e293b");
+      dispenserStates.forEach((state) => {
+        const { px, progress, isStalled } = state;
+        const pipeW = 28;
+        const pipeH = 38;
+
+        // Metallic pipe body
+        const grad = ctx.createLinearGradient(px - pipeW / 2, 0, px + pipeW / 2, 0);
+        grad.addColorStop(0, "#1e293b");
+        grad.addColorStop(0.5, "#334155");
+        grad.addColorStop(1, "#0f172a");
 
         ctx.fillStyle = grad;
-        ctx.fillRect(px - 13, 0, 26, 36);
+        ctx.fillRect(px - pipeW / 2, 0, pipeW, pipeH);
 
-        // Pipe rim nozzle
-        ctx.fillStyle = isBlocked ? "#450a0a" : "#064e3b";
-        ctx.fillRect(px - 16, 34, 32, 6);
+        // Pipe nozzle rim
+        ctx.fillStyle = isStalled ? "#450a0a" : "#022c22";
+        ctx.fillRect(px - pipeW / 2 - 3, pipeH - 2, pipeW + 6, 6);
 
-        // Status LED ring
-        ctx.beginPath();
-        ctx.arc(px, 16, 6, 0, Math.PI * 2);
-        ctx.fillStyle = isBlocked ? "#7f1d1d" : "#064e3b";
-        ctx.fill();
-        ctx.strokeStyle = isBlocked ? "#ef4444" : "#10b981";
-        ctx.lineWidth = 1.6;
-        ctx.stroke();
+        // Progress Bar Slot (Vertical capsule)
+        const barSlotW = 9;
+        const barSlotH = 24;
+        const barSlotX = px - barSlotW / 2;
+        const barSlotY = 6;
 
-        // Pulsing inner LED dot
-        const pulse = Math.sin(now * 0.008) * 0.5 + 0.5;
-        ctx.beginPath();
-        ctx.arc(px, 16, isBlocked ? 2.5 + pulse * 1.0 : 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = isBlocked ? "#f87171" : "#34d399";
-        ctx.fill();
+        // Slot background
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(barSlotX, barSlotY, barSlotW, barSlotH);
+        ctx.strokeStyle = isStalled
+          ? `rgba(239, 68, 68, ${pulse})`
+          : "rgba(255, 255, 255, 0.18)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barSlotX, barSlotY, barSlotW, barSlotH);
 
-        // Label on pipe
+        // Progress Bar Fill (Rises from bottom to top)
+        const fillHeight = Math.max(2, Math.floor(barSlotH * progress));
+        const fillY = barSlotY + (barSlotH - fillHeight);
+
+        ctx.save();
+        if (isStalled) {
+          // STALLED: Full bar glowing intense pulsing red
+          ctx.shadowColor = "#ef4444";
+          ctx.shadowBlur = 10 * pulse;
+          ctx.fillStyle = `rgba(239, 68, 68, ${pulse})`;
+          ctx.fillRect(barSlotX + 1, barSlotY + 1, barSlotW - 2, barSlotH - 2);
+
+          // Red LED indicator at nozzle
+          ctx.beginPath();
+          ctx.arc(px, pipeH + 7, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#f87171";
+          ctx.shadowColor = "#ef4444";
+          ctx.shadowBlur = 8;
+          ctx.fill();
+        } else {
+          // CRAFTING: Smooth cyan to emerald fill
+          ctx.shadowColor = "#06b6d4";
+          ctx.shadowBlur = 4;
+
+          const fillGrad = ctx.createLinearGradient(0, barSlotY + barSlotH, 0, barSlotY);
+          fillGrad.addColorStop(0, "#06b6d4");
+          fillGrad.addColorStop(1, "#10b981");
+
+          ctx.fillStyle = fillGrad;
+          ctx.fillRect(barSlotX + 1, fillY, barSlotW - 2, fillHeight);
+
+          // Green LED indicator at nozzle
+          ctx.beginPath();
+          ctx.arc(px, pipeH + 7, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = progress >= 0.95 ? "#34d399" : "#059669";
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Mini status text under nozzle
         ctx.font = "bold 8px sans-serif";
         ctx.textAlign = "center";
-        if (isBlocked) {
-          ctx.fillStyle = "#fca5a5";
-          ctx.fillText("ЖДЁТ", px, 30);
+        if (isStalled) {
+          ctx.fillStyle = `rgba(252, 165, 165, ${pulse})`;
+          ctx.fillText("ЖДЁТ", px, pipeH + 18);
         } else {
-          ctx.fillStyle = "#86efac";
-          ctx.fillText("ГОТОВ", px, 30);
+          ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+          ctx.fillText(`${Math.floor(progress * 100)}%`, px, pipeH + 18);
         }
       });
 
@@ -276,7 +306,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, beltY, w, beltHeight);
 
-      // Belt moving treads (continuous smooth scrolling without offset resets)
+      // Belt moving treads (continuous smooth scrolling)
       treadOffsetRef.current = (treadOffsetRef.current + beltSpeed) % 24;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
       ctx.lineWidth = 4;
@@ -336,7 +366,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       const img = imageLoadedRef.current;
       const remainingItems: ItemPhys[] = [];
 
-      // Sort items on the belt by x from right to left to prevent overlap queuing
+      // Maintain queue spacing between items on the belt
       const beltItems = itemsRef.current
         .filter((it) => !it.isFalling)
         .sort((a, b) => b.x - a.x);
@@ -344,8 +374,8 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       for (let b = 1; b < beltItems.length; b++) {
         const ahead = beltItems[b - 1];
         const cur = beltItems[b];
-        if (ahead.x - cur.x < SLOT_WIDTH) {
-          cur.x = ahead.x - SLOT_WIDTH;
+        if (ahead.x - cur.x < MIN_BELT_SPACING) {
+          cur.x = ahead.x - MIN_BELT_SPACING;
         }
       }
 
@@ -354,7 +384,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
         if (item.isFalling) {
           item.y += item.vy;
-          item.vy += 0.55; // gravity
+          item.vy += 0.65; // gravity
 
           if (item.y >= groundY) {
             item.y = groundY;
@@ -392,7 +422,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
           // Check if entered vault
           if (item.x >= vaultX + 10) {
-            // Realistic vault reward timing: credited precisely as figurine enters safe
             const income = Math.floor(
               currentBaseIncome * (1 + (currentBeltSpeedLevel - 1) * 0.15)
             );
@@ -491,42 +520,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
         }
       }
       floatingTextsRef.current = remainingTexts;
-
-      // 7. Top Traffic / Congestion Status Badge on Canvas
-      const isAnyBlocked = blockedPipes.some(Boolean);
-      const hudX = w - 12;
-      const hudY = 12;
-
-      ctx.save();
-      ctx.textAlign = "right";
-      ctx.font = "bold 10px sans-serif";
-
-      if (isAnyBlocked) {
-        // Red / Amber Congestion alert pill
-        ctx.fillStyle = "rgba(245, 158, 11, 0.16)";
-        ctx.strokeStyle = "rgba(245, 158, 11, 0.5)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(hudX - 160, hudY, 160, 20, 6) : ctx.fillRect(hudX - 160, hudY, 160, 20);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = "#fbbf24";
-        ctx.fillText("⚠️ ЛЕНТА ПЕРЕПОЛНЕНА", hudX - 10, hudY + 14);
-      } else {
-        // Green Smooth Flow pill
-        ctx.fillStyle = "rgba(16, 185, 129, 0.14)";
-        ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(hudX - 130, hudY, 130, 20, 6) : ctx.fillRect(hudX - 130, hudY, 130, 20);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = "#34d399";
-        ctx.fillText("⚡ ПОТОК В НОРМЕ", hudX - 10, hudY + 14);
-      }
-      ctx.restore();
 
       animFrameIdRef.current = requestAnimationFrame(render);
     };
