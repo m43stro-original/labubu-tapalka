@@ -340,6 +340,14 @@ export const FactoryView: React.FC<FactoryViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Industrial conveyor status tip */}
+            <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-[11px] text-amber-200/90">
+              <span className="text-sm">💡</span>
+              <span>
+                Если на трубах горит <strong>«ЖДЁТ»</strong> — лента переполнена и не успевает вывозить фигурки. Прокачайте <strong>«Скорость ленты»</strong>!
+              </span>
+            </div>
           </div>
         </div>
       ) : (
