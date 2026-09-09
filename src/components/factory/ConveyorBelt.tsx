@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { playCoinSound, triggerHaptic } from "@/lib/sound-fx";
+import { getDropIntervalMs, getBeltSpeedPx } from "@/lib/game-engine";
 
 interface ConveyorBeltProps {
   floorNumber: number;
@@ -135,15 +136,8 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
       // Fast, physical fall: 14 frames (~230ms) from nozzle to belt
       const FALL_FRAMES = 14;
 
-      // Belt speed scaling across 10 levels: 1.4 px/frame (84px/s) up to 5.5 px/frame (330px/s)
-      // Tuned so Level 3+ easily handles 3 dispensers, and Level 6+ easily handles 4 dispensers
-      const beltSpeed = 1.4 + (currentBeltSpeedLevel - 1) * 0.46;
-
-      // Production cadence: level 1 = 1600ms, level 5 = 1080ms, level 10 = 650ms
-      const dropIntervalMs = Math.max(
-        650,
-        Math.floor(1600 * Math.pow(0.90, currentDropSpeedLevel - 1))
-      );
+      const beltSpeed = getBeltSpeedPx(currentBeltSpeedLevel);
+      const dropIntervalMs = getDropIntervalMs(currentDropSpeedLevel);
 
       // Pipe coordinates evenly spaced across belt
       let pipeFractions: number[] = [];
@@ -289,17 +283,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
           ctx.fill();
         }
         ctx.restore();
-
-        // Mini status text under nozzle
-        ctx.font = "bold 8px sans-serif";
-        ctx.textAlign = "center";
-        if (isStalled) {
-          ctx.fillStyle = `rgba(252, 165, 165, ${pulse})`;
-          ctx.fillText("ЖДЁТ", px, pipeH + 18);
-        } else {
-          ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
-          ctx.fillText(`${Math.floor(progress * 100)}%`, px, pipeH + 18);
-        }
       });
 
       // 2. Draw Conveyor Belt Frame & Rollers
@@ -422,9 +405,8 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
 
           // Check if entered vault
           if (item.x >= vaultX + 10) {
-            const income = Math.floor(
-              currentBaseIncome * (1 + (currentBeltSpeedLevel - 1) * 0.15)
-            );
+            // Live supervision bonus: +50% income when watching the factory floor directly!
+            const income = Math.max(1, Math.round(currentBaseIncome * 1.5));
             onCoinEarnedRef.current(income);
             playCoinSound();
             triggerHaptic("light");
@@ -447,7 +429,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
               id: nextIdRef.current++,
               x: vaultX + 24,
               y: beltY - 56,
-              text: `+${income} ₽`,
+              text: `+${income} ₽ ⭐`,
               alpha: 1.0,
             });
 

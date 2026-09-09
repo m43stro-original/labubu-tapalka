@@ -104,6 +104,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState<{ amount: number; seconds: number } | null>(null);
+  const [viewedFloorNum, setViewedFloorNum] = useState<number>(1);
 
   // Authenticated Telegram identity
   const [tgUser, setTgUser] = useState<TelegramUserAuth | null>(null);
@@ -193,13 +194,18 @@ export default function App() {
   };
 
   // Real-time passive income accumulation ticker
-  // When activeTab === "factory", passive ticker pauses so coins are realistically credited
-  // strictly when Labubus reach the safe on the conveyor belt!
+  // When activeTab === "factory", the viewed floor earns live coins via the conveyor belt.
+  // All other unlocked floors continue accumulating passive income in the background!
   useEffect(() => {
     if (!user || !user.floors) return;
-    if (activeTab === "factory") return;
 
-    const passiveRate = calculatePassiveIncomePerSecond(user.floors);
+    // Determine which floors should tick passively
+    const passiveFloors =
+      activeTab === "factory"
+        ? user.floors.filter((f: any) => f.floorNumber !== viewedFloorNum)
+        : user.floors;
+
+    const passiveRate = calculatePassiveIncomePerSecond(passiveFloors);
     if (passiveRate <= 0) return;
 
     const ticker = setInterval(() => {
@@ -214,7 +220,7 @@ export default function App() {
     }, 500);
 
     return () => clearInterval(ticker);
-  }, [user?.floors, activeTab]);
+  }, [user?.floors, activeTab, viewedFloorNum]);
 
   // Smooth continuous energy regeneration ticker
   useEffect(() => {
@@ -317,6 +323,7 @@ export default function App() {
           <FactoryView
             user={user}
             onRefreshUser={(updated) => setUser(updated || user)}
+            onViewFloor={setViewedFloorNum}
             onLocalEarn={(amount) => {
               setUser((prev: any) => ({
                 ...prev,

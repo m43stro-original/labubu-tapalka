@@ -15,6 +15,17 @@ export interface TapValidationResult {
 }
 
 /**
+ * Kinematic calculation helpers shared between simulation and physics
+ */
+export function getDropIntervalMs(dropSpeedLevel: number): number {
+  return Math.max(650, Math.floor(1600 * Math.pow(0.90, Math.max(1, dropSpeedLevel) - 1)));
+}
+
+export function getBeltSpeedPx(beltSpeedLevel: number): number {
+  return 1.4 + (Math.max(1, beltSpeedLevel) - 1) * 0.46;
+}
+
+/**
  * Calculates real-time passive income per second for all unlocked factory floors
  */
 export function calculatePassiveIncomePerSecond(floors: ConveyorFloor[]): number {
@@ -25,15 +36,19 @@ export function calculatePassiveIncomePerSecond(floors: ConveyorFloor[]): number
     const config = FLOOR_CONFIGS[floor.floorNumber - 1];
     if (!config) continue;
 
-    // Drop interval between 1.0s and 4.0s based on dropSpeedLevel (1..10)
-    const dropInterval = Math.max(1.0, 4.0 - (floor.dropSpeedLevel - 1) * 0.32);
-    // Belt speed multiplier: 1.0x to 2.35x based on beltSpeedLevel (1..10)
-    const beltMultiplier = 1 + (floor.beltSpeedLevel - 1) * 0.15;
-    // Dispensers multiplier (1..4 pipes)
-    const dispenserMultiplier = floor.dispenserCount;
+    // Accurate drop interval in seconds
+    const intervalSec = getDropIntervalMs(floor.dropSpeedLevel) / 1000;
+    const dropsPerDispenserPerSec = 1 / intervalSec;
 
-    const dropsPerSecond = (1 / dropInterval) * dispenserMultiplier * beltMultiplier;
-    const floorPerSec = dropsPerSecond * config.baseIncomePerDrop;
+    // Dispensers count (1..4)
+    const dispenserCount = Math.max(1, Math.min(4, floor.dispenserCount));
+
+    // Belt flow efficiency: high belt speed guarantees 100% throughput without congestion stalls
+    const beltRatio = Math.min(1.0, getBeltSpeedPx(floor.beltSpeedLevel) / (1.2 + (dispenserCount - 1) * 0.7));
+    const flowEfficiency = 0.80 + 0.20 * beltRatio;
+
+    const totalDropsPerSec = dropsPerDispenserPerSec * dispenserCount * flowEfficiency;
+    const floorPerSec = totalDropsPerSec * config.baseIncomePerDrop;
     totalPerSec += floorPerSec;
   }
 
