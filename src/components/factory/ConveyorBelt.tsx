@@ -429,7 +429,7 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
               id: nextIdRef.current++,
               x: vaultX + 24,
               y: beltY - 56,
-              text: `+${income} ₽ ⭐`,
+              text: `+${income} ₽`,
               alpha: 1.0,
             });
 

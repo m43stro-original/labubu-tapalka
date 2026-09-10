@@ -240,17 +240,9 @@ export const FactoryView: React.FC<FactoryViewProps> = ({
                 <Factory size={15} className="text-brand-ruble" />
                 Модернизация этажа {selectedFloorNum}
               </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-emerald-400">
-                  +{formatCompactRubles(floorConfig.baseIncomePerDrop)} ₽ / шт
-                </span>
-                <span
-                  className="px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[9px] font-black tracking-wide flex items-center gap-0.5 shadow-sm"
-                  title="Бонус надзора директора: +50% к стоимости при личном присутствии на этаже!"
-                >
-                  ⭐ +50% LIVE
-                </span>
-              </div>
+              <span className="text-[11px] font-bold text-emerald-400">
+                +{formatCompactRubles(floorConfig.baseIncomePerDrop)} ₽ / шт
+              </span>
             </div>
 
             {/* Upgrades grid */}
