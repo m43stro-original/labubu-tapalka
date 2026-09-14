@@ -119,12 +119,12 @@ export default function AdminPage() {
             <h2 className="text-lg font-bold">Скрытая Админ-Панель</h2>
           </div>
           <p className="text-xs text-white/50">
-            Для доступа к управлению балансами и игроками введите PIN-код администратора:
+            Для доступа к панели управления введите пароль администратора:
           </p>
 
           <input
             type="password"
-            placeholder="PIN-код (по умолч. admin2026)"
+            placeholder="Пароль администратора"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-rose-500"

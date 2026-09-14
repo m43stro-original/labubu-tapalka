@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const ADMIN_PIN = process.env.ADMIN_SECRET || "admin2026";
+const ADMIN_PIN = process.env.ADMIN_SECRET || "sekret5412";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search") || "";
 
     if (pin !== ADMIN_PIN) {
-      return NextResponse.json({ error: "Неверный PIN-код администратора" }, { status: 401 });
+      return NextResponse.json({ error: "Неверный пароль администратора" }, { status: 401 });
     }
 
     const [totalUsers, totalBalanceAgg, totalDuels, totalTransfers] = await Promise.all([
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     const { pin, action, targetUserId, amount, reason } = body;
 
     if (pin !== ADMIN_PIN) {
-      return NextResponse.json({ error: "Неверный PIN администратора" }, { status: 401 });
+      return NextResponse.json({ error: "Неверный пароль администратора" }, { status: 401 });
     }
 
     if (!targetUserId || !action) {
