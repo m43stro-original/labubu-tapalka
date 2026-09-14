@@ -78,15 +78,15 @@ function extractTelegramUser(): TelegramUserAuth | null {
       }
     }
 
-    // 4. Search query parameters
-    if (window.location.search) {
+    // 4. Search query parameters (strictly in dev mode only)
+    if (process.env.NODE_ENV === "development" && window.location.search) {
       const p = new URLSearchParams(window.location.search);
       const tId = p.get("telegramId") || p.get("tgId");
       if (tId) {
         return {
           id: tId,
           username: p.get("username") || "",
-          firstName: p.get("firstName") || "Тапер",
+          firstName: p.get("firstName") || "Тапер (Dev)",
           photoUrl: p.get("photoUrl") || p.get("photo_url") || "",
         };
       }

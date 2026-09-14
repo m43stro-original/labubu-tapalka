@@ -8,12 +8,8 @@ export async function POST(req: NextRequest) {
     const { senderTelegramId, targetQuery, amount } = body;
 
     const numAmount = Number(amount);
-    if (!senderTelegramId || !targetQuery || isNaN(numAmount) || numAmount <= 0) {
-      return NextResponse.json({ error: "Некорректные параметры перевода" }, { status: 400 });
-    }
-
-    if (numAmount < 10) {
-      return NextResponse.json({ error: "Минимальная сумма перевода — 10 ₽" }, { status: 400 });
+    if (!senderTelegramId || !targetQuery || !Number.isFinite(numAmount) || numAmount < 10 || Math.floor(numAmount) !== numAmount) {
+      return NextResponse.json({ error: "Некорректная сумма перевода (минимум 10 ₽, целое число)" }, { status: 400 });
     }
 
     const sId = BigInt(senderTelegramId);
@@ -58,40 +54,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Получатель заблокирован" }, { status: 403 });
     }
 
-    // Safe atomic balance deduction with race-condition protection
-    const senderLock = await prisma.user.updateMany({
-      where: { id: sender.id, balance: { gte: numAmount } },
-      data: { balance: { decrement: numAmount } },
-    });
+    // Fully ACID atomic transfer transaction: guarantees rollback on any network or DB failure
+    const result = await prisma.$transaction(async (tx) => {
+      const senderLock = await tx.user.updateMany({
+        where: { id: sender.id, balance: { gte: numAmount } },
+        data: { balance: { decrement: numAmount } },
+      });
 
-    if (senderLock.count === 0) {
-      return NextResponse.json({ error: "Недостаточно рублей на балансе" }, { status: 400 });
-    }
+      if (senderLock.count === 0) {
+        throw new Error("INSUFFICIENT_FUNDS");
+      }
 
-    const [updatedReceiver, transferLog] = await prisma.$transaction([
-      prisma.user.update({
+      const updatedReceiver = await tx.user.update({
         where: { id: receiver.id },
         data: { balance: { increment: numAmount } },
-      }),
-      prisma.transferLog.create({
+      });
+
+      const transferLog = await tx.transferLog.create({
         data: {
           senderId: sender.id,
           receiverId: receiver.id,
           amount: numAmount,
         },
-      }),
-    ]);
+      });
 
-    const updatedSender = await prisma.user.findUnique({ where: { id: sender.id } });
+      const updatedSender = await tx.user.findUnique({ where: { id: sender.id } });
+
+      return { updatedReceiver, transferLog, updatedSender };
+    });
 
     return NextResponse.json({
       success: true,
-      senderBalance: updatedSender?.balance ?? sender.balance - numAmount,
-      receiverUsername: updatedReceiver.username || updatedReceiver.firstName || "Пользователь",
+      senderBalance: result.updatedSender?.balance ?? sender.balance - numAmount,
+      receiverUsername: result.updatedReceiver.username || result.updatedReceiver.firstName || "Пользователь",
       amount: numAmount,
-      transferId: transferLog.id,
+      transferId: result.transferLog.id,
     });
   } catch (err: unknown) {
+    if (err instanceof Error && err.message === "INSUFFICIENT_FUNDS") {
+      return NextResponse.json({ error: "Недостаточно рублей на балансе" }, { status: 400 });
+    }
     console.error("Error in POST /api/transfer:", err);
     return NextResponse.json(
       { error: "Ошибка при переводе: " + (err instanceof Error ? err.message : String(err)) },

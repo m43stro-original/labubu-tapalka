@@ -127,21 +127,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Неизвестное действие фабрики" }, { status: 400 });
     }
 
-    // Atomic update
-    const [updatedUser] = await prisma.$transaction([
-      prisma.user.update({
-        where: { id: user.id },
-        data: {
-          balance: { decrement: cost },
-          lastPassiveSync: new Date(),
-        },
-        include: { floors: { orderBy: { floorNumber: "asc" } } },
-      }),
-      prisma.conveyorFloor.update({
-        where: { id: floor.id },
-        data: floorUpdates,
-      }),
-    ]);
+    // Atomic update with balance guard: prevents negative balance
+    const userLock = await prisma.user.updateMany({
+      where: { id: user.id, balance: { gte: cost } },
+      data: {
+        balance: { decrement: cost },
+        lastPassiveSync: new Date(),
+      },
+    });
+
+    if (userLock.count === 0) {
+      return NextResponse.json({ error: "Недостаточно рублей для улучшения" }, { status: 400 });
+    }
+
+    await prisma.conveyorFloor.update({
+      where: { id: floor.id },
+      data: floorUpdates,
+    });
+
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: { floors: { orderBy: { floorNumber: "asc" } } },
+    });
+
+    if (!updatedUser) {
+      return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
+    }
 
     // Refetch refreshed floors
     const refreshedFloors = await prisma.conveyorFloor.findMany({

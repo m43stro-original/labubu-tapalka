@@ -30,9 +30,13 @@ export async function GET(req: NextRequest) {
       });
     } else if (type === "factory") {
       const usersWithFloors = await prisma.user.findMany({
-        where: { isBanned: false },
+        where: {
+          isBanned: false,
+          floors: { some: { isUnlocked: true } },
+        },
         include: { floors: true },
-        take: 100,
+        orderBy: { totalEarned: "desc" },
+        take: 150,
       });
 
       const mapped = usersWithFloors.map((u) => ({

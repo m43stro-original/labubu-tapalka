@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateTaps, calculateOfflineEarnings } from "@/lib/game-engine";
+import { REFERRAL_PASSIVE_PERCENT } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,6 +33,20 @@ export async function POST(req: NextRequest) {
     // Concurrently credit passive earnings so server balance stays 100% in sync with client!
     const passiveResult = calculateOfflineEarnings(user.lastPassiveSync, user.floors || []);
     const totalEarned = validation.earnedRubles + passiveResult.earnedRubles;
+
+    if (user.referrerId && passiveResult.earnedRubles > 0) {
+      const refBonus = Math.floor(passiveResult.earnedRubles * REFERRAL_PASSIVE_PERCENT);
+      if (refBonus > 0) {
+        prisma.user.update({
+          where: { id: user.referrerId },
+          data: {
+            balance: { increment: refBonus },
+            totalEarned: { increment: refBonus },
+            referralEarnings: { increment: refBonus },
+          },
+        }).catch((e) => console.error("Referral tap cut error:", e));
+      }
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },

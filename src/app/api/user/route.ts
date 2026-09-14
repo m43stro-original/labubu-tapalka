@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateOfflineEarnings } from "@/lib/game-engine";
-import { FLOOR_CONFIGS, LEVELS, REFERRAL_BONUS_INVITEE, REFERRAL_BONUS_INVITER } from "@/lib/constants";
+import { FLOOR_CONFIGS, LEVELS, REFERRAL_BONUS_INVITEE, REFERRAL_BONUS_INVITER, REFERRAL_PASSIVE_PERCENT } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
   try {
@@ -119,6 +119,20 @@ export async function GET(req: NextRequest) {
 
     // If offline earnings accrued, credit them
     if (offlineResult.earnedRubles > 0) {
+      if (user.referrerId) {
+        const refBonus = Math.floor(offlineResult.earnedRubles * REFERRAL_PASSIVE_PERCENT);
+        if (refBonus > 0) {
+          prisma.user.update({
+            where: { id: user.referrerId },
+            data: {
+              balance: { increment: refBonus },
+              totalEarned: { increment: refBonus },
+              referralEarnings: { increment: refBonus },
+            },
+          }).catch((e) => console.error("Referral offline cut error:", e));
+        }
+      }
+
       user = await prisma.user.update({
         where: { id: user.id },
         data: {

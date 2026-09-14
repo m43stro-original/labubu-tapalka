@@ -18,16 +18,17 @@ export async function GET(req: NextRequest) {
     });
 
     for (const exp of expiredDuels) {
-      await prisma.$transaction([
-        prisma.duel.update({
-          where: { id: exp.id },
-          data: { status: "EXPIRED" },
-        }),
-        prisma.user.update({
+      // Atomic lock on OPEN status prevents multiple concurrent refunds
+      const lock = await prisma.duel.updateMany({
+        where: { id: exp.id, status: "OPEN" },
+        data: { status: "EXPIRED" },
+      });
+      if (lock.count > 0) {
+        await prisma.user.update({
           where: { id: exp.creatorId },
           data: { balance: { increment: exp.betAmount } },
-        }),
-      ]);
+        });
+      }
     }
 
     const openDuels = await prisma.duel.findMany({
@@ -122,32 +123,35 @@ export async function POST(req: NextRequest) {
     // 1. CREATE DUEL
     if (action === "create") {
       const numBet = Number(betAmount);
-      if (isNaN(numBet) || numBet <= 0) {
-        return NextResponse.json({ error: "Некорректная ставка" }, { status: 400 });
+      if (!Number.isFinite(numBet) || numBet < 10 || Math.floor(numBet) !== numBet) {
+        return NextResponse.json({ error: "Некорректная ставка (минимум 10 ₽, целое число)" }, { status: 400 });
       }
-      if (user.balance < numBet) {
+
+      // Atomic balance deduction: prevents double spend & negative balance
+      const userLock = await prisma.user.updateMany({
+        where: { id: user.id, balance: { gte: numBet } },
+        data: { balance: { decrement: numBet } },
+      });
+
+      if (userLock.count === 0) {
         return NextResponse.json({ error: "Недостаточно рублей для ставки" }, { status: 400 });
       }
 
-      const [updatedUser, duel] = await prisma.$transaction([
-        prisma.user.update({
-          where: { id: user.id },
-          data: { balance: { decrement: numBet } },
-        }),
-        prisma.duel.create({
-          data: {
-            creatorId: user.id,
-            gameType: gameType === "DICE" ? "DICE" : "COIN",
-            betAmount: numBet,
-            status: "OPEN",
-          },
-        }),
-      ]);
+      const duel = await prisma.duel.create({
+        data: {
+          creatorId: user.id,
+          gameType: gameType === "DICE" ? "DICE" : "COIN",
+          betAmount: numBet,
+          status: "OPEN",
+        },
+      });
+
+      const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
 
       return NextResponse.json({
         success: true,
         duelId: duel.id,
-        balance: updatedUser.balance,
+        balance: updatedUser?.balance ?? user.balance - numBet,
       });
     }
 
@@ -166,18 +170,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Дуэль уже недоступна или завершена" }, { status: 400 });
       }
 
-      // 60-second limit check
+      // 60-second limit check with atomic status update
       if (new Date(duel.createdAt).getTime() < Date.now() - 60 * 1000) {
-        await prisma.$transaction([
-          prisma.duel.update({
-            where: { id: duel.id },
-            data: { status: "EXPIRED" },
-          }),
-          prisma.user.update({
+        const expireLock = await prisma.duel.updateMany({
+          where: { id: duel.id, status: "OPEN" },
+          data: { status: "EXPIRED" },
+        });
+        if (expireLock.count > 0) {
+          await prisma.user.update({
             where: { id: duel.creatorId },
             data: { balance: { increment: duel.betAmount } },
-          }),
-        ]);
+          });
+        }
         return NextResponse.json({ error: "Время лобби истекло (1 минута)" }, { status: 400 });
       }
 
@@ -185,7 +189,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Нельзя играть против самого себя" }, { status: 400 });
       }
 
-      if (user.balance < duel.betAmount) {
+      // Atomic balance deduction for challenger: prevents negative balance
+      const challengerDeduct = await prisma.user.updateMany({
+        where: { id: user.id, balance: { gte: duel.betAmount } },
+        data: { balance: { decrement: duel.betAmount } },
+      });
+
+      if (challengerDeduct.count === 0) {
         return NextResponse.json({ error: "Недостаточно рублей для принятия ставки" }, { status: 400 });
       }
 
@@ -236,25 +246,22 @@ export async function POST(req: NextRequest) {
       });
 
       if (duelLock.count === 0) {
+        // Refund challenger if duel was snatched concurrently
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { balance: { increment: duel.betAmount } },
+        });
         return NextResponse.json({ error: "Дуэль уже принята другим игроком" }, { status: 400 });
       }
 
-      // Atomic balance update
-      await prisma.$transaction([
-        // Deduct bet from challenger
-        prisma.user.update({
-          where: { id: user.id },
-          data: { balance: { decrement: duel.betAmount } },
-        }),
-        // Award prize pool to winner
-        prisma.user.update({
-          where: { id: winnerId },
-          data: {
-            balance: { increment: prizePool },
-            totalEarned: { increment: prizePool },
-          },
-        }),
-      ]);
+      // Award prize pool to winner
+      await prisma.user.update({
+        where: { id: winnerId },
+        data: {
+          balance: { increment: prizePool },
+          totalEarned: { increment: prizePool },
+        },
+      });
 
       const isUserWinner = winnerId === user.id;
 

@@ -57,9 +57,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Недостаточно рублей для запаса энергии" }, { status: 400 });
       }
 
-      updates.balance = user.balance - cost;
-      updates.maxEnergy = user.maxEnergy + 200;
-      updates.energy = user.energy + 200;
+      updates.maxEnergy = { increment: 200 };
+      updates.energy = { increment: 200 };
     } else if (upgradeType === "energy_regen") {
       const regenLevel = Math.floor(user.energyRegen - 3) + 1;
       cost = getEnergyRegenCost(regenLevel);
@@ -68,8 +67,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Недостаточно рублей для скорости регенерации" }, { status: 400 });
       }
 
-      updates.balance = user.balance - cost;
-      updates.energyRegen = user.energyRegen + 1;
+      updates.energyRegen = { increment: 1 };
     } else if (upgradeType === "level_up") {
       if (user.clickLevel >= 7) {
         return NextResponse.json({ error: "Достигнут максимальный уровень Labubu!" }, { status: 400 });
@@ -90,18 +88,33 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      updates.balance = user.balance - cost;
       updates.clickLevel = nextConfig.level;
       updates.clickPower = nextConfig.baseClickPower;
     } else {
       return NextResponse.json({ error: "Неизвестный тип прокачки" }, { status: 400 });
     }
 
-    const updatedUser = await prisma.user.update({
+    // Atomic update with balance guard: prevents double spend & negative balance
+    const updateResult = await prisma.user.updateMany({
+      where: { id: user.id, balance: { gte: cost } },
+      data: {
+        balance: { decrement: cost },
+        ...updates,
+      },
+    });
+
+    if (updateResult.count === 0) {
+      return NextResponse.json({ error: "Недостаточно рублей для улучшения" }, { status: 400 });
+    }
+
+    const updatedUser = await prisma.user.findUnique({
       where: { id: user.id },
-      data: updates,
       include: { floors: { orderBy: { floorNumber: "asc" } } },
     });
+
+    if (!updatedUser) {
+      return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,
