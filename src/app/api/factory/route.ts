@@ -131,7 +131,10 @@ export async function POST(req: NextRequest) {
     const [updatedUser] = await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
-        data: { balance: { decrement: cost } },
+        data: {
+          balance: { decrement: cost },
+          lastPassiveSync: new Date(),
+        },
         include: { floors: { orderBy: { floorNumber: "asc" } } },
       }),
       prisma.conveyorFloor.update({

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateTaps } from "@/lib/game-engine";
+import { validateTaps, calculateOfflineEarnings } from "@/lib/game-engine";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     const tId = BigInt(telegramId);
     const user = await prisma.user.findUnique({
       where: { telegramId: tId },
+      include: { floors: true },
     });
 
     if (!user) {
@@ -28,13 +29,18 @@ export async function POST(req: NextRequest) {
     // Anti-cheat validation: limits taps to actual energy regenerated + allowable tap frequency
     const validation = validateTaps(user, tapCount, Boolean(isFever));
 
+    // Concurrently credit passive earnings so server balance stays 100% in sync with client!
+    const passiveResult = calculateOfflineEarnings(user.lastPassiveSync, user.floors || []);
+    const totalEarned = validation.earnedRubles + passiveResult.earnedRubles;
+
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
-        balance: { increment: validation.earnedRubles },
-        totalEarned: { increment: validation.earnedRubles },
+        balance: { increment: totalEarned },
+        totalEarned: { increment: totalEarned },
         energy: validation.newEnergy,
         lastTapSync: new Date(),
+        lastPassiveSync: new Date(),
       },
     });
 
@@ -42,6 +48,7 @@ export async function POST(req: NextRequest) {
       success: true,
       validatedTaps: validation.validatedTaps,
       earnedRubles: validation.earnedRubles,
+      passiveEarned: passiveResult.earnedRubles,
       balance: updatedUser.balance,
       energy: validation.newEnergy,
       maxEnergy: updatedUser.maxEnergy,

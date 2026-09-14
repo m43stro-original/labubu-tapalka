@@ -239,14 +239,14 @@ export default function App() {
   }, [user?.maxEnergy, user?.energyRegen]);
 
   // Immediate 0ms local tap earnings updater
-  const handleLocalTapEarned = (earned: number, newEnergy: number) => {
+  const handleLocalTapEarned = (earned: number, energyUsed: number = 1) => {
     setUser((prev: any) => {
       if (!prev) return prev;
       return {
         ...prev,
         balance: prev.balance + earned,
         totalEarned: prev.totalEarned + earned,
-        energy: newEnergy,
+        energy: Math.max(0, prev.energy - energyUsed),
       };
     });
   };
@@ -314,7 +314,19 @@ export default function App() {
         {activeTab === "clicker" && (
           <ClickerView
             user={user}
-            onRefreshUser={(updated) => setUser(updated || user)}
+            onRefreshUser={(updated) => {
+              if (!updated) return;
+              setUser((prev: any) => {
+                if (!prev) return updated;
+                return {
+                  ...prev,
+                  ...updated,
+                  balance: Math.max(prev.balance, updated.balance),
+                  totalEarned: Math.max(prev.totalEarned, updated.totalEarned || prev.totalEarned),
+                  energy: updated.energy !== undefined ? updated.energy : prev.energy,
+                };
+              });
+            }}
             onTapEarned={handleLocalTapEarned}
           />
         )}

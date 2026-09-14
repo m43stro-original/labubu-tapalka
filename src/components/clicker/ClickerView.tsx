@@ -15,7 +15,7 @@ import { triggerHaptic } from "@/lib/sound-fx";
 interface ClickerViewProps {
   user: any;
   onRefreshUser: (updatedUser?: any) => void;
-  onTapEarned: (earned: number, newEnergy: number) => void;
+  onTapEarned: (earned: number, energyUsed?: number) => void;
 }
 
 export const ClickerView: React.FC<ClickerViewProps> = ({
@@ -38,6 +38,14 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
   const pendingTapsRef = useRef(0);
   const nextFloatingIdRef = useRef(1);
   const isSyncingRef = useRef(false);
+
+  // Local synchronous energy tracker (prevents rapid-click closure lag)
+  const localEnergyRef = useRef(user.energy);
+  useEffect(() => {
+    if (user.energy > localEnergyRef.current) {
+      localEnergyRef.current = user.energy;
+    }
+  }, [user.energy]);
 
   const userRef = useRef(user);
   userRef.current = user;
@@ -93,10 +101,12 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        // Reconcile server balance
+        localEnergyRef.current = data.energy;
+        // Reconcile server balance safely without dropping optimistic gains
         onRefreshUserRef.current({
           ...userRef.current,
-          balance: data.balance,
+          balance: Math.max(userRef.current.balance, data.balance),
+          totalEarned: Math.max(userRef.current.totalEarned, data.totalEarned || userRef.current.totalEarned),
           energy: data.energy,
         });
       } else {
@@ -113,7 +123,7 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
 
   // Sync pending taps to server periodically and reliably on unmount or tab switch
   useEffect(() => {
-    const syncInterval = setInterval(flushTaps, 800);
+    const syncInterval = setInterval(flushTaps, 1200);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
@@ -134,27 +144,28 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
 
   // Handle tap on center circle
   const handleTap = (clientX: number, clientY: number, isCrit: boolean) => {
-    if (user.energy < 1) {
+    if (localEnergyRef.current < 1) {
       triggerHaptic("warning");
       return;
     }
+
+    localEnergyRef.current -= 1;
 
     // Deduct energy & grant rubles
     const tapPower = user.clickPower;
     const multiplier = (isCrit ? CRIT_MULTIPLIER : 1) * (isFever ? FEVER_MULTIPLIER : 1);
     const earned = Math.round(tapPower * multiplier);
-    const newEnergy = Math.max(0, user.energy - 1);
 
     // Update parent immediately in 0ms!
-    onTapEarned(earned, newEnergy);
+    onTapEarned(earned, 1);
     pendingTapsRef.current += 1;
 
-    // Immediately flush if batch reaches 8 taps
-    if (pendingTapsRef.current >= 8) {
+    // Flush if batch reaches 15 taps
+    if (pendingTapsRef.current >= 15) {
       flushTaps();
     }
 
-    // Spawn floating number
+    // Spawn floating number (capped to max 5 simultaneous items for rock-solid 60 FPS)
     const newItem: FloatingItem = {
       id: nextFloatingIdRef.current++,
       x: clientX,
@@ -162,7 +173,7 @@ export const ClickerView: React.FC<ClickerViewProps> = ({
       text: isCrit ? `КРИТ! +${earned} ₽` : `+${earned} ₽`,
       isCrit,
     };
-    setFloatingItems((prev) => [...prev.slice(-15), newItem]);
+    setFloatingItems((prev) => [...prev.slice(-4), newItem]);
 
     // Increase combo
     if (!isFever) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Swords,
@@ -31,25 +31,109 @@ export const DuelsView: React.FC<DuelsViewProps> = ({ user, onRefreshUser }) => 
   // Duel rolling / animated result modal
   const [activeDuelAnimation, setActiveDuelAnimation] = useState<any | null>(null);
 
+  // Tracking refs for creator duels & animations
+  const myCreatedDuelIdsRef = useRef<Set<string>>(new Set());
+  const shownDuelIdsRef = useRef<Set<string>>(new Set());
+  const mountTimeRef = useRef<number>(Date.now());
+  const activeDuelAnimationRef = useRef(activeDuelAnimation);
+  activeDuelAnimationRef.current = activeDuelAnimation;
+
   // Fetch duels list from server (server auto-expires duels > 60s and refunds)
   const fetchDuels = async () => {
     try {
       const res = await fetch(`/api/duels?telegramId=${user.telegramId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setOpenDuels(data.openDuels || []);
-        setUserHistory(data.userDuels || []);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const newOpenDuels: any[] = data.openDuels || [];
+      const newUserDuels: any[] = data.userDuels || [];
+
+      setOpenDuels(newOpenDuels);
+      setUserHistory(newUserDuels);
+
+      // Keep track of any open duels belonging to current user
+      newOpenDuels.forEach((d: any) => {
+        if (d.creator.telegramId === user.telegramId?.toString()) {
+          myCreatedDuelIdsRef.current.add(d.id);
+        }
+      });
+
+      // Check if any duel created by this user was accepted & finished by an opponent
+      if (!activeDuelAnimationRef.current) {
+        const newlyFinishedCreatorDuel = newUserDuels.find((d: any) => {
+          if (shownDuelIdsRef.current.has(d.id)) return false;
+          const isCreatorDuel =
+            myCreatedDuelIdsRef.current.has(d.id) ||
+            (d.creatorId && d.creatorId === user.id);
+          const isRecent =
+            d.updatedAt &&
+            new Date(d.updatedAt).getTime() > mountTimeRef.current - 15000;
+          return isCreatorDuel && isRecent;
+        });
+
+        if (newlyFinishedCreatorDuel) {
+          const d = newlyFinishedCreatorDuel;
+          shownDuelIdsRef.current.add(d.id);
+          myCreatedDuelIdsRef.current.delete(d.id);
+
+          triggerHaptic("heavy");
+          playDuelRollSound();
+
+          setActiveDuelAnimation({
+            status: "rolling",
+            gameType: d.gameType,
+            betAmount: d.betAmount,
+            isCreator: true,
+          });
+
+          setTimeout(() => {
+            if (d.isWin) {
+              triggerHaptic("success");
+              playCritSound();
+            } else {
+              triggerHaptic("error");
+            }
+
+            setActiveDuelAnimation({
+              status: "result",
+              isWinner: d.isWin,
+              prize: d.prize || d.betAmount * 2,
+              gameType: d.gameType,
+              resultData: d.resultData,
+              isCreator: true,
+            });
+
+            if (data.userBalance !== null && data.userBalance !== undefined) {
+              onRefreshUser({ ...user, balance: data.userBalance });
+            }
+          }, 2000);
+
+          return;
+        }
+      }
+
+      // Sync balance if changed (e.g. lobby expired refund or balance shift) when no animation active
+      if (!activeDuelAnimationRef.current && data.userBalance !== null && data.userBalance !== undefined) {
+        if (Math.abs(user.balance - data.userBalance) > 0.01) {
+          onRefreshUser({ ...user, balance: data.userBalance });
+        }
       }
     } catch (err) {
       console.error(err);
     }
   };
 
+  // Adaptive polling: 1.5s if player has open lobbies, 4s otherwise
+  const hasMyOpenDuels = openDuels.some(
+    (d) => d.creator.telegramId === user.telegramId?.toString()
+  );
+
   useEffect(() => {
     fetchDuels();
-    const interval = setInterval(fetchDuels, 4000);
+    const intervalTime = hasMyOpenDuels ? 1500 : 4000;
+    const interval = setInterval(fetchDuels, intervalTime);
     return () => clearInterval(interval);
-  }, [user.telegramId]);
+  }, [user.telegramId, hasMyOpenDuels]);
 
   // Live countdown timer for open duels (1 second tick)
   useEffect(() => {
@@ -101,6 +185,10 @@ export const DuelsView: React.FC<DuelsViewProps> = ({ user, onRefreshUser }) => 
       if (!res.ok) {
         alert(data.error || "Ошибка при создании лобби");
         return;
+      }
+
+      if (data.duelId) {
+        myCreatedDuelIdsRef.current.add(data.duelId);
       }
 
       triggerHaptic("success");
@@ -157,11 +245,14 @@ export const DuelsView: React.FC<DuelsViewProps> = ({ user, onRefreshUser }) => 
       triggerHaptic("heavy");
       playDuelRollSound();
 
+      shownDuelIdsRef.current.add(duelId);
+
       // Show rolling suspense modal
       setActiveDuelAnimation({
         status: "rolling",
         gameType: duelGameType,
         betAmount: requiredBet,
+        isCreator: false,
       });
 
       const res = await fetch("/api/duels", {
@@ -197,12 +288,17 @@ export const DuelsView: React.FC<DuelsViewProps> = ({ user, onRefreshUser }) => 
           prize: data.prize,
           gameType: data.gameType,
           resultData: data.resultData,
+          isCreator: false,
         });
 
-        // Trigger balance refresh
-        fetch(`/api/user?telegramId=${user.telegramId}`)
-          .then((r) => r.json())
-          .then((d) => d.user && onRefreshUser(d.user));
+        // Trigger balance refresh immediately
+        if (data.balance !== undefined && data.balance !== null) {
+          onRefreshUser({ ...user, balance: data.balance });
+        } else {
+          fetch(`/api/user?telegramId=${user.telegramId}`)
+            .then((r) => r.json())
+            .then((d) => d.user && onRefreshUser(d.user));
+        }
         fetchDuels();
       }, 2000);
     } catch (err) {
@@ -554,22 +650,28 @@ export const DuelsView: React.FC<DuelsViewProps> = ({ user, onRefreshUser }) => 
                       <div>
                         <span className="text-white/50 block">Выпало:</span>
                         <span className="text-white font-bold">
-                          {activeDuelAnimation.resultData.coin === "HEADS" ? "ОРЁЛ" : "РЕШКА"}
+                          {activeDuelAnimation.resultData.coin === "HEADS"
+                            ? "ОРЁЛ (Создатель)"
+                            : "РЕШКА (Соперник)"}
                         </span>
                       </div>
                     ) : (
                       <>
                         <div>
-                          <span className="text-white/50 block">Соперник:</span>
-                          <span className="text-rose-400 font-black text-sm">
-                            {activeDuelAnimation.resultData.creatorTotal || "5"}
+                          <span className="text-white/50 block">Твой бросок:</span>
+                          <span className="text-emerald-400 font-black text-sm">
+                            {activeDuelAnimation.isCreator
+                              ? activeDuelAnimation.resultData.creatorTotal || "—"
+                              : activeDuelAnimation.resultData.opponentTotal || "—"}
                           </span>
                         </div>
                         <div className="w-[1px] bg-white/10" />
                         <div>
-                          <span className="text-white/50 block">Твой бросок:</span>
-                          <span className="text-emerald-400 font-black text-sm">
-                            {activeDuelAnimation.resultData.opponentTotal || "8"}
+                          <span className="text-white/50 block">Соперник:</span>
+                          <span className="text-rose-400 font-black text-sm">
+                            {activeDuelAnimation.isCreator
+                              ? activeDuelAnimation.resultData.opponentTotal || "—"
+                              : activeDuelAnimation.resultData.creatorTotal || "—"}
                           </span>
                         </div>
                       </>

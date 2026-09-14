@@ -130,6 +130,16 @@ export async function GET(req: NextRequest) {
         },
         include: { floors: { orderBy: { floorNumber: "asc" } } },
       });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          energy: currentEnergy,
+          lastPassiveSync: now,
+          lastTapSync: now,
+        },
+        include: { floors: { orderBy: { floorNumber: "asc" } } },
+      });
     }
 
     // Ensure clickPower strictly reflects current evolution level

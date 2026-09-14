@@ -48,11 +48,21 @@ export function getHapticEnabled() {
   return hapticEnabled;
 }
 
+let lastHapticTime = 0;
+let lastTapSoundTime = 0;
+
 // Telegram Haptics helper
 export function triggerHaptic(
   type: "light" | "medium" | "heavy" | "rigid" | "soft" | "selection" | "success" | "warning" | "error" = "light"
 ) {
   if (!hapticEnabled || typeof window === "undefined") return;
+
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  // Throttle high-frequency light taps to prevent saturating the Telegram WebView bridge
+  if (type === "light" && now - lastHapticTime < 45) {
+    return;
+  }
+  lastHapticTime = now;
 
   try {
     const twa = (window as unknown as { Telegram?: { WebApp?: { HapticFeedback?: {
@@ -86,6 +96,12 @@ export function triggerHaptic(
 // Procedural tap click sound with combo pitch scaling
 export function playTapSound(comboLevel = 0) {
   if (!soundEnabled) return;
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (now - lastTapSoundTime < 35) {
+    return;
+  }
+  lastTapSoundTime = now;
+
   const ctx = getAudioContext();
   if (!ctx) return;
 

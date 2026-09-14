@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
+      userBalance: currentUser ? currentUser.balance : null,
       openDuels: openDuels.map((d) => ({
         id: d.id,
         betAmount: d.betAmount,
@@ -80,10 +81,14 @@ export async function GET(req: NextRequest) {
       userDuels: userDuels.map((d) => ({
         id: d.id,
         betAmount: d.betAmount,
+        prize: d.betAmount * 2,
         gameType: d.gameType,
+        creatorId: d.creatorId,
+        opponentId: d.opponentId,
         winnerId: d.winnerId,
         isWin: currentUser ? d.winnerId === currentUser.id : false,
         resultData: d.resultData ? JSON.parse(d.resultData) : null,
+        updatedAt: d.updatedAt,
       })),
     });
   } catch (err: unknown) {

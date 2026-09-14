@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import { Sparkles } from "lucide-react";
 import { playCoinSound, triggerHaptic } from "@/lib/sound-fx";
 import { getDropIntervalMs, getBeltSpeedPx } from "@/lib/game-engine";
 
@@ -518,12 +517,6 @@ export const ConveyorBelt: React.FC<ConveyorBeltProps> = ({
     <div className="relative w-full h-64 bg-gradient-to-b from-[#111724] via-[#0c101a] to-[#070a10] rounded-3xl p-2 border border-white/10 shadow-inner overflow-hidden flex flex-col justify-end">
       {/* Background industrial texture */}
       <div className="absolute inset-0 bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:14px_14px] pointer-events-none" />
-
-      {/* Top Banner Tag */}
-      <div className="absolute top-3 left-4 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 border border-white/10 text-[10px] text-white/80 backdrop-blur-md shadow-sm">
-        <Sparkles size={11} className="text-amber-400" />
-        <span>Этаж {floorNumber} • {dispenserCount} {dispenserCount === 1 ? "автомат" : dispenserCount < 5 ? "автомата" : "автоматов"}</span>
-      </div>
 
       {/* High-Performance 60 FPS HTML5 Canvas */}
       <canvas
